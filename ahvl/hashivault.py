@@ -1,5 +1,13 @@
 #
-# hashi vault connect
+# import modules
+#
+from ahvl.options.hashivault import OptionsHashiVault
+from ansible.errors import AnsibleError, AnsibleParserError
+from ansible.module_utils.parsing.convert_bool import BOOLEANS, BOOLEANS_FALSE, BOOLEANS_TRUE, boolean
+import hvac
+
+#
+# HashiVault
 #
 class HashiVault:
 
@@ -10,28 +18,22 @@ class HashiVault:
         #
         self.opts = OptionsHashiVault(variables, lookup_plugin, **kwargs)
 
-        #
-        # sanity check
-        #
-        if not HAS_HVAC:
-            self.error("the HVAC python library is needed, please pip install hvac")
-
         # check if certificate validation is needed
         self.verify = self.boolean_or_cacert()
 
         # set vault connection dict
         vault_dict = {
-            'url' : self.opts.get('url'),
+            'url' : self.opts.get('ahvl_url'),
             'verify' : self.verify,
         }
 
         # set namespace
-        if not self.opts.isempty(self.opts.get('namespace')):
-            vault_dict['namespace'] = self.opts.get('namespace')
+        if not self.opts.isempty(self.opts.get('ahvl_namespace')):
+            vault_dict['namespace'] = self.opts.get('ahvl_namespace')
 
         # set token
-        if self.opts.get('auth_method') == 'token':
-            vault_dict['token'] = self.opts.get('token')
+        if self.opts.get('ahvl_auth_method') == 'token':
+            vault_dict['token'] = self.opts.get('ahvl_token')
 
         # connect
         self.client = hvac.Client(**vault_dict)
@@ -43,12 +45,12 @@ class HashiVault:
         #
         # to enable a new auth backend, simply add a new 'def auth_<type>' method below.
         #
-        if self.opts.get('auth_method') != 'token':
+        if self.opts.get('ahvl_auth_method') != 'token':
             try:
                 # prefixing with auth_ to limit which methods can be accessed
-                getattr(self, 'auth_' + self.opts.get('auth_method'))
+                getattr(self, 'auth_' + self.opts.get('ahvl_auth_method'))
             except AttributeError:
-                raise AnsibleError("authentication method [{}] not supported.".format(self.opts.get('auth_method')))
+                raise AnsibleError("authentication method [{}] not supported.".format(self.opts.get('ahvl_auth_method')))
 
         # check if we're authenticated
         if not self.client.is_authenticated():
@@ -61,7 +63,7 @@ class HashiVault:
             # read data from vault with the given mount point, path and key
             data = self.client.secrets.kv.v2.read_secret_version(
                 path=fullpath,
-                mount_point=self.opts.get('mount_point'),
+                mount_point=self.opts.get('ahvl_mount_point'),
             )
 
         # create the path so it can be written to
@@ -70,7 +72,7 @@ class HashiVault:
             ret = self.client.secrets.kv.v2.create_or_update_secret(
                 path=fullpath,
                 secret=secret_dict,
-                mount_point=self.opts.get('mount_point'),
+                mount_point=self.opts.get('ahvl_mount_point'),
             )
             data = None
             pass
@@ -91,7 +93,7 @@ class HashiVault:
         ret = self.client.secrets.kv.v2.patch(
             path=fullpath,
             secret=secret_dict,
-            mount_point=self.opts.get('mount_point'),
+            mount_point=self.opts.get('ahvl_mount_point'),
         )
 
     def setdict(self, fullpath, secrets):
@@ -100,39 +102,39 @@ class HashiVault:
         ret = self.client.secrets.kv.v2.patch(
             path=fullpath,
             secret=secrets,
-            mount_point=self.opts.get('mount_point'),
+            mount_point=self.opts.get('ahvl_mount_point'),
         )
 
     def auth_userpass(self):
 
         # check mount point
-        if self.opts.isempty(self.opts.get('mount_point')):
-            self.opts.set('mount_point', 'userpass')
+        if self.opts.isempty(self.opts.get('ahvl_mount_point')):
+            self.opts.set('ahvl_mount_point', 'userpass')
 
         # authenticate
-        self.client.auth_userpass(self.opts.get('username'), self.opts.get('password'), mount_point=self.opts.get('mount_point'))
+        self.client.auth_userpass(self.opts.get('ahvl_username'), self.opts.get('ahvl_password'), mount_point=self.opts.get('ahvl_mount_point'))
 
     def auth_ldap(self):
 
         # check mount point
-        if self.opts.isempty(self.opts.get('mount_point')):
-            self.opts.set('mount_point', 'ldap')
+        if self.opts.isempty(self.opts.get('ahvl_mount_point')):
+            self.opts.set('ahvl_mount_point', 'ldap')
 
         # authenticate
-        self.client.auth_ldap(self.opts.get('username'), self.opts.get('password'), mount_point=self.opts.get('mount_point'))
+        self.client.auth_ldap(self.opts.get('ahvl_username'), self.opts.get('ahvl_password'), mount_point=self.opts.get('ahvl_mount_point'))
 
     def auth_approle(self):
 
         # authenticate
-        self.client.auth_approle(self.opts.get('role_id'), self.opts.get('secret_id'))
+        self.client.auth_approle(self.opts.get('ahvl_role_id'), self.opts.get('ahvl_secret_id'))
 
     def boolean_or_cacert(self):
 
-        validate_certs = boolean(self.opts.get('validate_certs'), strict=False)
+        validate_certs = boolean(self.opts.get('ahvl_validate_certs'), strict=False)
         '''' return a bool or cacert '''
         if validate_certs is True:
-            if self.opts.get('cacert') != '':
-                return self.opts.get('cacert')
+            if self.opts.get('ahvl_cacert') != '':
+                return self.opts.get('ahvl_cacert')
             else:
                 return True
         else:

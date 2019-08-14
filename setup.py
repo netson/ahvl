@@ -2,15 +2,15 @@ from distutils.core import setup
 setup(
   name = 'ahvl',
   packages = ['ahvl'],
-  version = '0.3',
+  version = '0.4',
   license = 'MIT',                                  # Chose a license from here: https://help.github.com/articles/licensing-a-repository
   description = 'Base libraries for the Netson HashiCorp Vault Lookup Plugin for Ansible',
   author = 'RH Sonnenberg',
   author_email = 'r.sonnenberg@netson.nl',
   url = 'https://github.com/netson/ahvl',           # Provide either the link to your github or to your website
-  download_url = 'https://github.com/netson/ahvl/archive/v0_3.tar.gz',    # I explain this later on
+  download_url = 'https://github.com/netson/ahvl/archive/v0_4.tar.gz',    # I explain this later on
   keywords = ['ansible', 'hashicorp', 'vault', 'lookup'],   # Keywords that define your package best
-  install_requires=['passlib'],
+  install_requires=['passlib','hvac'],
   classifiers=[
     'Development Status :: 3 - Alpha',              # Chose either "3 - Alpha", "4 - Beta" or "5 - Production/Stable" as the current state of your package
     'Intended Audience :: Developers',              # Define that your audience are developers
