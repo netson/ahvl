@@ -2,13 +2,19 @@
 
 Base libraries for the Ansible HashiCorp Vault Lookup (AHVL) Plugin by Netson
 
-### Install
+### Install package
 
-```python
+```bash
 pip install ahvl
 ```
 
 Package will most likely be installed in ```/usr/local/lib/pythonX.X/dist-packages/ahvl``` on ubuntu systems
+
+### Upgrade package
+
+```bash
+pip install --upgrade ahvl
+```
 
 ### Update instructions
 
@@ -27,4 +33,5 @@ Package will most likely be installed in ```/usr/local/lib/pythonX.X/dist-packag
 * create a new release on github with the same version number as in ```download_url```
 * create PyPi source distribution ```python setup.py sdist```
 * upload package to PyPi using twine ```twine upload dist/*```
+* enter your ```username``` and ```password```
 * DONE! :-)
