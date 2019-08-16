@@ -13,7 +13,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     license='MIT',
     url="https://github.com/netson/ahvl",
-    download_url='https://github.com/netson/ahvl/archive/v1.0.0.tar.gz'
+    download_url='https://github.com/netson/ahvl/archive/v1.0.0.tar.gz',
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
