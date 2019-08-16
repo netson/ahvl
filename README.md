@@ -32,6 +32,8 @@ pip install --upgrade ahvl
 * push to master ```git push origin master```
 * create a new release on github with the same version number as in ```download_url```
 * create PyPi source distribution ```python setup.py sdist```
+* test package upload using twine ```twine upload --repository-url https://test.pypi.org/legacy/ dist/*```
+* verify test results on ```https://test.pypi.org/manage/projects/```
 * upload package to PyPi using twine ```twine upload dist/*```
 * enter your ```username``` and ```password```
 * DONE! :-)
