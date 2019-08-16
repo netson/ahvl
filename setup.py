@@ -10,7 +10,7 @@ with open(path.join(here, 'DESCRIPTION.md'), encoding='utf-8') as f:
 
 setup(
     name="ahvl",
-    version="1.0.3",
+    version="1.0.4",
     author="RH Sonnenberg",
     author_email="r.sonnenberg@netson.nl",
     description="Base libraries for the Ansible HashiCorp Vault Lookup (AHVL) Plugin by Netson",
@@ -18,7 +18,7 @@ setup(
     long_description_content_type="text/markdown",
     license='MIT',
     url="https://github.com/netson/ahvl",
-    download_url='https://github.com/netson/ahvl/archive/v1.0.3.tar.gz',
+    download_url='https://github.com/netson/ahvl/archive/v1.0.4.tar.gz',
     packages=find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
