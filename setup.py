@@ -5,12 +5,12 @@ from io import open
 here = path.abspath(path.dirname(__file__))
 
 # Get the long description from the README file
-with open(path.join(here, 'DESCRIPTION.md'), encoding='utf-8') as f:
+with open(path.join(here, 'README.md'), encoding='utf-8') as f:
     long_description = f.read()
 
 setup(
     name="ahvl",
-    version="1.0.5",
+    version="1.0.6",
     author="RH Sonnenberg",
     author_email="r.sonnenberg@netson.nl",
     description="Base libraries for the Ansible HashiCorp Vault Lookup (AHVL) Plugin by Netson",
@@ -18,7 +18,7 @@ setup(
     long_description_content_type="text/markdown",
     license='MIT',
     url="https://github.com/netson/ahvl",
-    download_url='https://github.com/netson/ahvl/archive/v1.0.5.tar.gz',
+    download_url='https://github.com/netson/ahvl/archive/v1.0.6.tar.gz',
     packages=find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
