@@ -174,9 +174,12 @@ class OptionsBase():
         return "{}/".format(self.get('ahvl_tmppath'))
 
     # function to get temp filename
-    def get_tmp_filename(self):
+    def get_tmp_filename(self, with_dir=True):
         filename = pwd.genword(entropy="secure", charset="ascii_50", length=10)
-        return "{}{}".format(self.get_tmp_dir(), filename)
+        if with_dir:
+            return "{}{}".format(self.get_tmp_dir(), filename)
+        else:
+            return filename
 
     # function to delete temporary files
     def delete_tmp_files(self, tempfile, filenames):
@@ -221,6 +224,20 @@ class OptionsBase():
         # sanity check
         if re.compile(regex).groups < 1:
             self.error("could not find a valid fingerprint in string [{}]".format(line))
+
+        # return fingerprint
+        return match.group(1)
+
+    # function to extract fingerprint from string
+    def extract_bubblebabble(self, line):
+
+        # find bubble babble fingerprint; works for ssh-keygen -B
+        regex = r"\d+\s+(\S+)\s{1}.*$"
+        match = re.match(regex, line)
+
+        # sanity check
+        if re.compile(regex).groups < 1:
+            self.error("could not find a valid bubble babble fingerprint in string [{}]".format(line))
 
         # return fingerprint
         return match.group(1)

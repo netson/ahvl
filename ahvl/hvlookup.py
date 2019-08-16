@@ -9,6 +9,8 @@ from ahvl.hashivault import HashiVault
 from ahvl.generate.salt import GenerateSalt
 from ahvl.generate.password import GeneratePassword
 from ahvl.generate.sshkey import GenerateSSHKey
+from ahvl.generate.sshhostkey import GenerateSSHHostKey
+from ahvl.generate.gpgkey import GenerateGPGKey
 
 #
 # ansible display
@@ -55,10 +57,11 @@ class HvLookup(LookupBase):
     #
     def cleanup(self):
 
+        self.vv("cleaning up after ourselves")
+
         # remove dir if it still exists;
         # it may have been deleted by a generate method already
         if self.opts.isdir(self.opts.get('ahvl_tmppath')):
-            self.vv("cleaning up after ourselves")
             self.opts.delete_tmp_dir(self.opts.get('ahvl_tmppath'))
 
         # unset variables
@@ -119,6 +122,36 @@ class HvLookup(LookupBase):
 
         # find value
         secret = self.find_sshkey(options)
+
+        # sanity check
+        if not secret:
+            self.error("the value for [{}] could not be found for fullpath [{}]".format(options.get('key'), options.get('fullpath')))
+
+        # return
+        return secret
+
+    #
+    # return sshhostkey
+    #
+    def return_sshhostkey(self, options):
+
+        # find value
+        secret = self.find_sshhostkey(options)
+
+        # sanity check
+        if not secret:
+            self.error("the value for [{}] could not be found for fullpath [{}]".format(options.get('fullkey'), options.get('fullpath')))
+
+        # return
+        return secret
+
+    #
+    # return gpgkey
+    #
+    def return_gpgkey(self, options):
+
+        # find value
+        secret = self.find_gpgkey(options)
 
         # sanity check
         if not secret:
@@ -199,7 +232,7 @@ class HvLookup(LookupBase):
         return salt
         
     #
-    # find secret
+    # find password
     #
     def find_password(self, options):
 
@@ -228,7 +261,7 @@ class HvLookup(LookupBase):
         return secret
 
     #
-    # find secret
+    # find sshkey
     #
     def find_sshkey(self, options):
 
@@ -278,6 +311,97 @@ class HvLookup(LookupBase):
             # get requested secret
             if options.get('key') not in secrets:
                 self.error("the requested key [{}] could not be found after generating the sshkey; "
+                           "have you requested an invalid combination?".format(options.get('key')))
+
+            # set proper return value
+            secret = secrets[options.get('key')]
+
+        return secret
+
+    #
+    # find sshhostkey
+    #
+    def find_sshhostkey(self, options):
+
+        # attempt to find secret
+        if not options.get('renew'):
+            self.vv("searching vault for [{}] in [{}]".format(options.get('fullkey'), options.get('fullpath')))
+            secret = self.vault.get(options.get('fullpath'), options.get('fullkey'))
+            
+        else:
+            self.vv("forcing new sshhostkey generation for [{}] in [{}]".format(options.get('fullkey'), options.get('fullpath')))
+            secret = None
+
+        # check for empty secret
+        if secret is None:
+
+            self.vv("hostkey [{}] not found; generating".format(options.get('fullkey')))
+
+            secretgen   = GenerateSSHHostKey(self.variables, self, **self.kwargs)
+            secrets     = secretgen.generate()
+
+            # save generated secrets
+            self.vault.setdict(
+                fullpath=options.get('fullpath'),
+                secrets=secrets,
+            )
+
+            # get requested secret
+            if options.get('fullkey') not in secrets:
+                self.error("the requested key [{}] could not be found after generating the sshhostkey; "
+                           "have you requested an invalid combination?".format(options.get('fullkey')))
+
+            # set proper return value
+            secret = secrets[options.get('fullkey')]
+
+        return secret
+
+    #
+    # find sshhostkey
+    #
+    def find_gpgkey(self, options):
+
+        # attempt to find secret
+        if not options.get('renew'):
+            self.vv("searching vault for [{}] in [{}]".format(options.get('key'), options.get('fullpath')))
+            secret = self.vault.get(options.get('fullpath'), options.get('key'))
+            
+        else:
+            self.vv("forcing new gpgkey generation for [{}] in [{}]".format(options.get('key'), options.get('fullpath')))
+            secret = None
+
+        # check for empty secret
+        if secret is None:
+
+            self.vv("gpgkey [{}] not found; generating".format(options.get('key')))
+
+            # save original key
+            key = self.opts.get('key')
+
+            # get sign password
+            options.set('key', "private_sign_password")
+            pwd_sign = self.find_password(options)
+
+            # get encrypt password
+            options.set('key', "private_encrypt_password")
+            pwd_encr = self.find_password(options)
+
+            # reset key
+            options.set('key', key)
+
+            # generate gpgkey
+            secretgen   = GenerateGPGKey(self.variables, self, gpgkey_password_sign=pwd_sign, gpgkey_password_encr=pwd_encr, **self.kwargs)
+            secrets     = secretgen.generate()
+
+            # save generated secrets
+            self.vault.setdict(
+                fullpath=options.get('fullpath'),
+                secrets=secrets,
+            )
+
+            # get requested secret
+            if options.get('key') not in secrets:
+                self.error("the requested key [{}] could not be found after generating the gpgkey; "
                            "have you requested an invalid combination?".format(options.get('key')))
 
             # set proper return value

@@ -69,7 +69,9 @@ class OptionsLookupSSHKey(OptionsBase):
                        "fingerprint_md5",
                        "fingerprint_md5_clean",
                        "fingerprint_md5_art", # visual via ascii randomart
-                       "fingerprint_putty"]
+                       "fingerprint_putty",
+                       "fingerprint_bubblebabble",
+                       "fingerprint_bubblebabble_clean"]
 
         #
         # sanity checks

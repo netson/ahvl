@@ -149,9 +149,10 @@ class GenerateSSHKey:
         result['private']   = self.opts.get_file_contents(file_key)
         result['public']    = self.opts.get_file_contents(file_pub)
 
-        # generate fingerprints
+        # generate fingerprints / bubble babble
         result = self.opts.merge(result, self.gen_fingerprints("md5", file_pub))
         result = self.opts.merge(result, self.gen_fingerprints("sha256", file_pub))
+        result = self.opts.merge(result, self.gen_bubblebabble(file_pub))
 
         # return result
         return result
@@ -200,7 +201,9 @@ class GenerateSSHKey:
         cmd = [self.opts.get('bin_keygen'),
                "-f{}".format(file_key),
                "-p", "-P{}".format(password),
-               "-N{}".format(password), "-o"]
+               "-N{}".format(password),
+               "-o",
+               "-a", "100"]
         proc    = Process("ssh-keygen", cmd).run()
 
         # set result
@@ -342,6 +345,27 @@ class GenerateSSHKey:
         # return
         return result
 
+    # generate fingerprints
+    def gen_bubblebabble(self, pubfile):
+
+        # generate fingerprints - output sent to stdout
+        cmd = [self.opts.get('bin_keygen'),   # full path to binary
+               "-B",                        # list bubble babble fingerprint
+               "-f{}".format(pubfile)]      # full path to public key
+
+        # run process and catch stdout
+        proc    = Process("ssh-keygen", cmd).run()
+        stdout  = proc.getstdout()
+        bbline  = stdout.pop(0)
+
+        # set results
+        result = {}
+        result['fingerprint_bubblebabble'] = bbline
+        result['fingerprint_bubblebabble_clean'] = self.opts.extract_bubblebabble(bbline)
+
+        # return
+        return result
+
     # function to get putty version
     def putty_get_version(self):
 
@@ -374,7 +398,7 @@ class GenerateSSHKey:
         if os.path.isfile(pwdfile):
                 os.remove(pwdfile)
 
-    # function to keep files after generating
+    # function to cleanup
     def cleanup(self, tempfile, filename, sshkeys, filenames):
 
         # delete tmp files

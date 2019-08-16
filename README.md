@@ -25,7 +25,7 @@ pip install --upgrade ahvl
 * clone repository ```git clone git://github.com/netson/ahvl```
 * set remote origin ```git remote set-url origin git@github.com:netson/ahvl.git```
 * make changes as needed
-* remove any dist folder that may exist ```rm -rf ./dist```
+* remove any dist folder that may exist ```rm -rf ./dist && rm MANIFEST```
 * determine next PyPi package version number, look at ```https://github.com/netson/ahvl/releases```
 * change the ```version``` and ```download_url``` in ```setup.py```
 * commit changes to git ```git add . && git commit -m "commit message"```
