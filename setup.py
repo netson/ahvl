@@ -8,9 +8,6 @@ here = path.abspath(path.dirname(__file__))
 with open(path.join(here, 'DESCRIPTION.md'), encoding='utf-8') as f:
     long_description = f.read()
 
-with open(".md", "r") as fh:
-    long_description = fh.read()
-
 setuptools.setup(
     name="ahvl",
     version="1.0.2",
