@@ -15,20 +15,17 @@ class OptionsLookupGPGKey(OptionsBase):
 
         # return list of required options
         return [
-            'key',
-            'gpgkey_name',
         ]
 
     def defaults(self):
 
         # set default option values
         options = {
-            'basepath'      : "gpgkeys",                    # basepath
-            'gpgkey_name'   : None,                         # name of the key to get
-            'fullpath'      : None,                         # basepath
-            'key'           : None,                         # which part to get (public, private, etc)
-            'renew'         : False,                        # force generating a new sshkey regardless if it exists or not
-                                                            # be careful with this setting, as it will renew on each iteration
+            'basepath'          : "gpgkeys",                    # basepath
+            'gpgkey_fullname'   : None,                         # full name for key
+            'gpgkey_email'      : None,                         # email for key
+            'gpgkey_comment'    : None,                         # comment for key
+            'gpgkey_uid'        : None,                         # uid for key
         }
 
         # return
@@ -40,45 +37,50 @@ class OptionsLookupGPGKey(OptionsBase):
         o = self.options
 
         #
+        # set find/uid
+        #
+        if not self.isempty(o['find']):
+            self.set('gpgkey_uid', o['find'])
+
+        if self.isempty(o['gpgkey_uid']):
+            name    = "{}".format(o['gpgkey_fullname'])
+            email    = " <{}>".format(o['gpgkey_email'])
+            comment = " ({})".format(o['gpgkey_comment']) if not self.isempty(o['gpgkey_comment']) else ""
+            uid = "{}{}{}".format(name, comment, email)
+            self.set('gpgkey_uid', uid)
+
+        if self.isempty(o['find']):
+            self.set('find', self.get('gpgkey_uid'))
+
+        #
         # set path
         #
         if self.isempty(o['fullpath']):
             fullpath = "{}/{}".format(
-                "{}".format(o['basepath']).strip("/"),
-                "{}".format(o['gpgkey_name']).strip("/")
+                "{}".format(self.get_clean_path(self.get('basepath'))),
+                "{}".format(self.get_clean_path(self.get('find')))
             )
             self.set('fullpath', fullpath)
 
         #
         # set accepted values
         #
-        allowed_key = ["private_encrypt",
-                       "private_encrypt_keyid",
-                       "private_encrypt_fingerprint",
-                       "private_encrypt_createddate",
-                       "private_encrypt_expirydate",
-                       "private_sign",
-                       "private_sign_keyid",
-                       "private_sign_fingerprint",
-                       "private_sign_createddate",
-                       "private_sign_expirydate",
-                       "public_encrypt",
-                       "public_encrypt_keyid",
-                       "public_encrypt_fingerprint",
-                       "public_encrypt_createddate",
-                       "public_encrypt_expirydate",
-                       "public_sign",
-                       "public_sign_keyid",
-                       "public_sign_fingerprint",
-                       "public_sign_createddate",
-                       "public_sign_expirydate"]
-
+        allowed_in  = ["master_private",
+                       "master_private_armored",
+                       "master_keyid",
+                       "master_fingerprint",
+                       "master_expirationdate",
+                       "master_keytype",
+                       "master_keybits",
+                       "master_keycurve",
+                       "master_password",
+                      ]
 
         #
         # sanity checks
         #
-        if o['key'] not in allowed_key:
-            self.error("value for key parameter is invalid; [{}] given, but expected one of {}".format(o['key'], allowed_key))
+        if o['in'] not in allowed_in:
+            self.error("value for [in] parameter is invalid; [{}] given, but expected one of {}".format(o['in'], allowed_in))
 
-        if (self.isempty(o['basepath']) and self.isempty(o['gpgkey_name'])) or self.isempty(o['fullpath']):
-            self.error("either provide a basepath and gpgkey_name, or provide the fullpath directly");
+        if (self.isempty(o['basepath']) and self.isempty(o['gpgkey_udi'])) or self.isempty(o['fullpath']):
+            self.error("either provide a basepath and gpgkey_uid, or provide the fullpath directly");

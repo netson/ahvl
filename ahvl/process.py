@@ -78,7 +78,7 @@ class Process(object):
     def setprocess(self, proc):
 
         # sanity check
-        accepted = ["ssh-keygen", "openssl", "puttygen"]
+        accepted = ["ssh-keygen", "openssl", "puttygen", "gpg"]
         if not proc in accepted:
             raise AnsibleError("given process name [{}] is unknown".format(proc))
 

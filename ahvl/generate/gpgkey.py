@@ -6,6 +6,9 @@ from ahvl.process import Process
 from ansible.utils.display import Display
 import gnupg
 import os
+import re
+from packaging import version
+from ansible.errors import AnsibleError, AnsibleParserError
 
 #
 # ansible display
@@ -26,6 +29,53 @@ class GenerateGPGKey:
 
     # generate gpg keyfiles
     def generate(self):
+
+        # options shorthand
+        o = self.opts
+
+        # sanity check gpg/libgcrypt versions
+        versions        = self.get_gpg_version()
+        req_gpg         = '2.1.17'
+        req_libgcrypt   = '1.8.1'
+        if version.parse(versions['gpg']) < version.parse(req_gpg) or version.parse(versions['libgcrypt']) < version.parse(req_libgcrypt):
+            raise AnsibleError("gpg version [{}] and libgcrypt version [{}] are required; [{}] and [{}] given".format(req_gpg, req_libgcrypt, versions['gpg'], versions['libgcrypt']))
+
+    def get_gpg_version(self):
+
+        # set command
+        cmd = [self.opts.get('gpgkey_bin')]
+        args = ["--version"]
+        cmd += args
+
+        # run subprocess
+        proc = Process("gpg", cmd).run()
+        stdout = proc.getstdout()
+
+        # find gpg version
+        regex_gpg = r"gpg\s+\(GnuPG\)\s+(\d+\.\d+\.?\d*)$"
+        match_gpg = re.match(regex_gpg, stdout[0])
+
+        # sanity check
+        if re.compile(regex_gpg).groups < 1:
+            self.error("could not find a valid gpg version number in string [{}]".format(stdout[0]))
+
+        # find libgcrypt version
+        regex_libgcrypt = r"libgcrypt\s+(\d+\.\d+\.?\d*)$"
+        match_libgcrypt = re.match(regex_libgcrypt, stdout[1])
+
+        # sanity check
+        if re.compile(regex_libgcrypt).groups < 1:
+            self.error("could not find a valid gpg version number in string [{}]".format(stdout[1]))
+
+        # return versions
+        return {'gpg'       : match_gpg.group(1),
+                'libgcrypt' : match_libgcrypt.group(1),
+               }
+
+    #def gen_master(self, keytype, key):
+
+    # generate gpg keyfiles
+    def generate_old(self):
 
         # get common info for keys
         title    = self.opts.get('gpgkey_name')

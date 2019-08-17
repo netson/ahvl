@@ -34,9 +34,9 @@ class HvLookup(LookupBase):
         # debug
         self.vv("using prefix [{}]".format(self.opts.prefix))
         self.vv("searching in [{}]".format(self.opts.get('fullpath')))
-        self.vv("for key [{}]".format(self.opts.get('key')))
-        if 'ret' in self.opts.getall().keys():
-            self.vv("returning [{}]".format(self.opts.get('ret')))
+        self.vv("finding 'find' [{}]".format(self.opts.get('find')))
+        self.vv("for 'in' [{}]".format(self.opts.get('in')))
+        self.vv("returning 'out' [{}]".format(self.opts.get('out')))
 
         #
         # vault connect
@@ -155,7 +155,7 @@ class HvLookup(LookupBase):
 
         # sanity check
         if not secret:
-            self.error("the value for [{}] could not be found for fullpath [{}]".format(options.get('key'), options.get('fullpath')))
+            self.error("the value for 'in' [{}] could not be found for fullpath [{}]".format(options.get('in'), options.get('fullpath')))
 
         # return
         return secret
@@ -363,34 +363,31 @@ class HvLookup(LookupBase):
 
         # attempt to find secret
         if not options.get('renew'):
-            self.vv("searching vault for [{}] in [{}]".format(options.get('key'), options.get('fullpath')))
-            secret = self.vault.get(options.get('fullpath'), options.get('key'))
+            self.vv("searching vault for [{}] in [{}]".format(options.get('in'), options.get('fullpath')))
+            secret = self.vault.get(options.get('fullpath'), options.get('in'))
             
         else:
-            self.vv("forcing new gpgkey generation for [{}] in [{}]".format(options.get('key'), options.get('fullpath')))
+            self.vv("forcing new gpgkey generation for [{}] in [{}]".format(options.get('in'), options.get('fullpath')))
             secret = None
 
         # check for empty secret
         if secret is None:
 
-            self.vv("gpgkey [{}] not found; generating".format(options.get('key')))
+            self.vv("gpgkey [{}] not found; generating".format(options.get('in')))
 
             # save original key
-            key = self.opts.get('key')
+            origin = options.get('in')
 
-            # get sign password
-            options.set('key', "private_sign_password")
-            pwd_sign = self.find_password(options)
-
-            # get encrypt password
-            options.set('key', "private_encrypt_password")
-            pwd_encr = self.find_password(options)
+            # get master password
+            #options.set('in', "master_password")
+            #pwd_master = self.find_password(options)
 
             # reset key
-            options.set('key', key)
+            options.set('in', origin)
 
             # generate gpgkey
-            secretgen   = GenerateGPGKey(self.variables, self, gpgkey_password_sign=pwd_sign, gpgkey_password_encr=pwd_encr, **self.kwargs)
+            #secretgen   = GenerateGPGKey(self.variables, self, master_password=pwd_master, **self.kwargs)
+            secretgen   = GenerateGPGKey(self.variables, self, **self.kwargs)
             secrets     = secretgen.generate()
 
             # save generated secrets
@@ -400,12 +397,12 @@ class HvLookup(LookupBase):
             )
 
             # get requested secret
-            if options.get('key') not in secrets:
-                self.error("the requested key [{}] could not be found after generating the gpgkey; "
-                           "have you requested an invalid combination?".format(options.get('key')))
+            if options.get('in') not in secrets:
+                self.error("the requested 'in' [{}] could not be found after generating the gpgkey; "
+                           "have you requested an invalid combination?".format(options.get('in')))
 
             # set proper return value
-            secret = secrets[options.get('key')]
+            secret = secrets[options.get('in')]
 
         return secret
 

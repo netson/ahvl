@@ -6,6 +6,12 @@ import re
 from distutils.spawn import find_executable
 from passlib import pwd
 from ansible.errors import AnsibleError, AnsibleParserError
+from ansible.utils.display import Display
+
+#
+# ansible display
+#
+display = Display()
 
 #
 # OptionsBase
@@ -27,17 +33,18 @@ class OptionsBase():
         self.reqs           = self.required()   # required options
 
         # init and validate
+        display.vvvv("loading options object [{}]".format(self.__class__.__name__))
         self.prefix()
         self.initialize(variables, **kwargs)
-        self.check_required()
         self.validate()
+        self.check_required()
 
     # get option
     def get(self, opt):
 
         # sanity check
         if opt not in self.options.keys():
-            raise AnsibleError("the requested option [{}] does not exist".format(opt))
+            raise AnsibleError("the requested option [{}] does not exist [{}]".format(opt, self.__class__.__name__))
 
         # return value
         return self.options[opt]
@@ -66,26 +73,46 @@ class OptionsBase():
     # merge given options with ansible variables
     def initialize(self, variables, **kwargs):
 
-        # always add tmppath to options
-        self.options['ahvl_tmppath'] = None
-        
-        for opt in self.options.keys():
+        display.vvvv("initializing options object [{}]".format(self.__class__.__name__))
 
+        # always add tmppath/find/in/out/basepath/fullpath/renew to options
+        if 'ahvl_tmppath' not in self.options:
+            self.options['ahvl_tmppath'] = None
+
+        if 'find' not in self.options:
+            self.options['find'] = None
+
+        if 'in' not in self.options:
+            self.options['in'] = None
+
+        if 'out' not in self.options:
+            self.options['out'] = 'hexsha512'
+
+        if 'basepath' not in self.options:
+            self.options['basepath'] = None
+
+        if 'fullpath' not in self.options:
+            self.options['fullpath'] = None
+
+        if 'renew' not in self.options:
+            self.options['renew'] = False
+
+        for opt in self.options.keys():
             # set option name as it can be found in the variables dict
             # also make it uppercase when environment variables are used
             varopt = "{}_{}".format(self.prefix, opt)
             varopt_upper = varopt.upper()
 
             # check if options have been set as function arguments
-            if opt in kwargs.keys():
+            if opt in kwargs.keys() and kwargs[opt] is not None:
                 self.set(opt, kwargs[opt])
 
             # check if options have been set as environment variable
-            elif varopt_upper in os.environ:
+            elif varopt_upper in os.environ and os.environ[varopt_upper] is not None:
                 self.set(opt, os.environ[varopt_upper])
 
             # check if options have been set as playbook variables
-            elif varopt in variables:
+            elif varopt in variables and variables[varopt] is not None:
                 self.set(opt, variables[varopt])
 
             # check if options have been set as nested playbook variables
@@ -99,13 +126,37 @@ class OptionsBase():
                     self.set(opt, lkpopt)
 
         # check if tempdir exists and is writeable
-        if not self.isdir(self.get('ahvl_tmppath')) or not self.iswriteabledir(self.get('ahvl_tmppath')):
-            self.error("the temp dir [{}] either does not exist or is not writeable".format(o('ahvl_tmppath')))
+        if self.isempty(self.get('ahvl_tmppath')) or not self.isdir(self.get('ahvl_tmppath')) or not self.iswriteabledir(self.get('ahvl_tmppath')):
+            self.error("the temp dir [{}] either does not exist or is not writeable".format(self.get('ahvl_tmppath')))
 
+    #
+    # check required options
+    #
     def check_required(self):
+
+        display.vvvv("checking required field for options object [{}]".format(self.__class__.__name__))
+
         for opt,val in self.options.items():
             if opt in self.reqs and self.isempty(val):
-                self.error("option [{}] is required and is empty".format(opt))
+                self.error("option [{}] is required and is empty [{}]".format(opt, self.__class__.__name__))
+
+        # check for valid find/in/out values, only when these options are for LookupOptions
+        if self.__class__.__name__.startswith('OptionsLookup'):
+            if 'find' not in self.options.keys() or self.isempty(self.options['find']):
+                self.error("option [find] is required and is empty [{}]".format(self.__class__.__name__))
+
+            if 'in' not in self.options.keys() or self.isempty(self.options['in']):
+                self.error("option [in] is required and is empty [{}]".format(self.__class__.__name__))
+
+            if 'out' not in self.options.keys() or self.isempty(self.options['out']):
+                self.error("option [out] is required and is empty [{}]".format(self.__class__.__name__))
+
+        # check for valid out value
+        allowed_out = ["plaintext", "hexsha256", "hexsha512", "sha256crypt",
+                       "sha512crypt", "phpass", "mysql41", "postgresmd5", "onetime"]
+
+        if 'out' in self.options.keys() and self.options['out'] not in allowed_out:
+            self.error("option out has value [{}]; expected one of {}".format(self.options['out'], allowed_out))
 
     # empty function to validate options
     def validate(self):
@@ -168,6 +219,23 @@ class OptionsBase():
     # function to find default binaries in system path
     def find_binary(self, binary):
         return find_executable(binary)
+
+    # function to get clean, safe path
+    def get_clean_path(self, path):
+
+        # sanity check
+        if path is None:
+            return path
+
+        # define characters to be replaced
+        rep = ['.',' ','(',')','<','>','@']
+        for r in rep:
+            path.replace(r, "_")
+
+        # strip leading and trailing slashes
+        path.strip("/")
+
+        return path
 
     # function to get temp path
     def get_tmp_dir(self):
@@ -248,5 +316,5 @@ class OptionsBase():
 
     # fail on validation
     def error(self, msg):
-        msg = "\n\nHASHI_VAULT OPTIONS ERROR:\n{}".format(msg)
+        msg = "\n\nHASHI_VAULT OPTIONS ERROR:\n{}\n\nOPTIONS:\n{}".format(msg, self.options)
         raise AnsibleError(msg)
