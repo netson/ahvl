@@ -1,25 +1,35 @@
 #
 # import modules
 #
-from ahvl.options.hashivault import OptionsHashiVault
-from ansible.errors import AnsibleError, AnsibleParserError
+from ahvl.helper import AhvlMsg, AhvlHelper
 from ansible.module_utils.parsing.convert_bool import BOOLEANS, BOOLEANS_FALSE, BOOLEANS_TRUE, boolean
 import hvac
+
+#
+# message
+#
+msg = AhvlMsg()
+hlp = AhvlHelper()
 
 #
 # HashiVault
 #
 class HashiVault:
 
-    def __init__(self, variables, lookup_plugin=None, **kwargs):
+    #
+    # set options
+    #
+    def setopts(self, options):
+        self.opts = options
 
-        #
-        # options
-        #
-        self.opts = OptionsHashiVault(variables, lookup_plugin, **kwargs)
+    #
+    # connect to vault
+    #
+    def connect(self, lookup_plugin):
 
         # check if certificate validation is needed
         self.verify = self.boolean_or_cacert()
+        msg.vvvv("verifying vault certificates [{}]".format(self.verify))
 
         # set vault connection dict
         vault_dict = {
@@ -28,7 +38,7 @@ class HashiVault:
         }
 
         # set namespace
-        if not self.opts.isempty(self.opts.get('ahvl_namespace')):
+        if not hlp.isempty(self.opts.get('ahvl_namespace')):
             vault_dict['namespace'] = self.opts.get('ahvl_namespace')
 
         # set token
@@ -50,19 +60,24 @@ class HashiVault:
                 # prefixing with auth_ to limit which methods can be accessed
                 getattr(self, 'auth_' + self.opts.get('ahvl_auth_method'))
             except AttributeError:
-                raise AnsibleError("authentication method [{}] not supported.".format(self.opts.get('ahvl_auth_method')))
+                msg.fail("authentication method [{}] not supported.".format(self.opts.get('ahvl_auth_method')))
 
         # check if we're authenticated
         if not self.client.is_authenticated():
-            raise AnsibleError("invalid hashicorp vault token specified for lookup")
+            msg.fail("invalid hashicorp vault token specified for lookup")
 
-    def get(self, fullpath, key):
+        msg.vvvv("connection authenticated using [{}]".format(self.opts.get('ahvl_auth_method')))
+
+
+    def get(self, path, key):
+
+        msg.vvvv("getting vault data from path [{}] and key [{}] at mountpoint [{}]".format(path, key, self.opts.get('ahvl_mount_point')))
 
         # wrap in try/except block to catch hvac.exceptions.InvalidPath exception when the path does not exist yet
         try:
             # read data from vault with the given mount point, path and key
             data = self.client.secrets.kv.v2.read_secret_version(
-                path=fullpath,
+                path=path,
                 mount_point=self.opts.get('ahvl_mount_point'),
             )
 
@@ -70,45 +85,53 @@ class HashiVault:
         except hvac.exceptions.InvalidPath:
             secret_dict = { key : None }
             ret = self.client.secrets.kv.v2.create_or_update_secret(
-                path=fullpath,
+                path=path,
                 secret=secret_dict,
                 mount_point=self.opts.get('ahvl_mount_point'),
             )
             data = None
             pass
 
-        # check if requested fullpath/key exists
+        # check if requested path/key exists
         if data is None or ('data' in data and 'data' in data['data'] and key not in data['data']['data']):
             return None
 
         # return requested key
         return data['data']['data'][key]
 
-    def set(self, fullpath, key, secret):
+
+    def set(self, path, key, secret):
+
+        msg.vvvv("setting vault data in path [{}] and key [{}] at mountpoint [{}]".format(path, key, self.opts.get('ahvl_mount_point')))
 
         # set or update secret; since it's versioned, we won't lose any previous values
         secret_dict = { key: secret }
 
         # using create_or_update overwrites the entire secret
         ret = self.client.secrets.kv.v2.patch(
-            path=fullpath,
+            path=path,
             secret=secret_dict,
             mount_point=self.opts.get('ahvl_mount_point'),
         )
 
-    def setdict(self, fullpath, secrets):
+
+    def setdict(self, path, secrets):
+
+        msg.vvvv("setting vault data dict in path [{}] at mountpoint [{}]".format(path, self.opts.get('ahvl_mount_point')))
 
         # using create_or_update overwrites the entire secret
         ret = self.client.secrets.kv.v2.patch(
-            path=fullpath,
+            path=path,
             secret=secrets,
             mount_point=self.opts.get('ahvl_mount_point'),
         )
 
     def auth_userpass(self):
 
+        msg.vvvv("attempt to authenticate to vault using [userpass]")
+
         # check mount point
-        if self.opts.isempty(self.opts.get('ahvl_mount_point')):
+        if hlp.isempty(self.opts.get('ahvl_mount_point')):
             self.opts.set('ahvl_mount_point', 'userpass')
 
         # authenticate
@@ -116,14 +139,18 @@ class HashiVault:
 
     def auth_ldap(self):
 
+        msg.vvvv("attempt to authenticate to vault using [ldap]")
+
         # check mount point
-        if self.opts.isempty(self.opts.get('ahvl_mount_point')):
+        if hlp.isempty(self.opts.get('ahvl_mount_point')):
             self.opts.set('ahvl_mount_point', 'ldap')
 
         # authenticate
         self.client.auth_ldap(self.opts.get('ahvl_username'), self.opts.get('ahvl_password'), mount_point=self.opts.get('ahvl_mount_point'))
 
     def auth_approle(self):
+
+        msg.vvvv("attempt to authenticate to vault using [approle]")
 
         # authenticate
         self.client.auth_approle(self.opts.get('ahvl_role_id'), self.opts.get('ahvl_secret_id'))

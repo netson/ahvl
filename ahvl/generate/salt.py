@@ -1,28 +1,40 @@
 #
 # import modules
 #
-from ahvl.options.generatesalt import OptionsGenerateSalt
+from ahvl.options.generate.salt import OptionsGenerateSalt
+from ahvl.helper import AhvlMsg, AhvlHelper
 import random
+
+#
+# helper/message
+#
+msg = AhvlMsg()
+hlp = AhvlHelper()
 
 #
 # GenerateSalt
 #
 class GenerateSalt:
 
-    def __init__(self, variables, lookup_plugin=None, **kwargs):
+    def __init__(self, lookup_plugin):
 
-        #
-        # options
-        #
-        self.opts = OptionsGenerateSalt(variables, lookup_plugin, **kwargs)
+        # set lookup plugin
+        self.lookup_plugin  = lookup_plugin
+        #self.variables      = lookup_plugin.variables
+        #self.kwargs         = lookup_plugin.kwargs
+
+        # set options
+        self.opts = OptionsGenerateSalt(lookup_plugin)
+
 
     def get_key(self):
 
         # always include hostname so a unique salt is used on each host, even when using the same password
-        return "_".join([self.opts.get('key'),
-                         self.opts.hostname.replace(".","_"),
-                         self.opts.get('ret'),
+        return "_".join([self.opts.get('in'),
+                         self.opts.get('hostname').replace(".","_"),
+                         self.opts.get('out'),
                          "salt"])
+
 
     def get_length(self):
         
@@ -56,7 +68,7 @@ class GenerateSalt:
         # get length and characters
         key             = self.get_key() # key name for salt
         length          = self.get_length()
-        chars           = self.get_chars(self.opts.get('chars'))
+        chars           = self.get_chars(self.opts.get('salt_chars'))
 
         # generate salt
         rand = random.SystemRandom()

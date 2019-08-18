@@ -1,31 +1,36 @@
 #
 # import modules
 #
-from ahvl.options.generategpgkey import OptionsGenerateGPGKey
+from ahvl.options.generate.gpgkey import OptionsGenerateGPGKey
+from ahvl.helper import AhvlMsg, AhvlHelper
 from ahvl.process import Process
-from ansible.utils.display import Display
-import gnupg
-import os
-import re
 from packaging import version
-from ansible.errors import AnsibleError, AnsibleParserError
+import re
 
 #
-# ansible display
+# helper/message
 #
-display = Display()
+msg = AhvlMsg()
+hlp = AhvlHelper()
 
 #
 # GenerateGPGKey
 #
 class GenerateGPGKey:
 
-    def __init__(self, variables, lookup_plugin=None, **kwargs):
+    def __init__(self, lookup_plugin, passphrase):
 
-        #
-        # options
-        #
-        self.opts = OptionsGenerateGPGKey(variables, lookup_plugin, **kwargs)
+        # set lookup plugin
+        self.lookup_plugin  = lookup_plugin
+        self.variables      = lookup_plugin.variables
+        self.kwargs         = lookup_plugin.kwargs
+        self.passphrase     = passphrase
+
+        # set options
+        self.opts = OptionsGenerateGPGKey(lookup_plugin)
+
+        # create password file
+        self.pwdfile        = self.create_pwd_file()
 
     # generate gpg keyfiles
     def generate(self):
@@ -33,14 +38,75 @@ class GenerateGPGKey:
         # options shorthand
         o = self.opts
 
-        # sanity check gpg/libgcrypt versions
-        versions        = self.get_gpg_version()
-        req_gpg         = '2.1.17'
-        req_libgcrypt   = '1.8.1'
-        if version.parse(versions['gpg']) < version.parse(req_gpg) or version.parse(versions['libgcrypt']) < version.parse(req_libgcrypt):
-            raise AnsibleError("gpg version [{}] and libgcrypt version [{}] are required; [{}] and [{}] given".format(req_gpg, req_libgcrypt, versions['gpg'], versions['libgcrypt']))
+        msg.display("generating a new GPG key this may take a while")
 
-    def get_gpg_version(self):
+        # prepare the temp folder
+        self.check_versions()
+        self.create_gpg_conf()
+        self.init_gnupg_dir()
+
+        # set empty result
+        result = {}
+
+        #
+        # generate the master key
+        #
+        self.generate_key('cert')
+        master_sec_info = self.get_key_info('secret', 'cert')
+        master_pub_info = self.get_key_info('public', 'cert')
+        master_fpr      = master_sec_info['master_sec_fingerprint']
+        result          = self.opts.merge(result, master_sec_info)
+
+        #
+        # generate the sign subkey - provide the fingerprint of the master
+        #
+        self.generate_key('sign', master_fpr)
+        sign_sec_info   = self.get_key_info('secret', 'sign', master_fpr)
+        sign_fpr        = sign_sec_info['sign_sec_fingerprint']
+        result          = self.opts.merge(result, sign_sec_info)
+
+        #
+        # generate the encr subkey - provide the fingerprint of the master
+        #
+        self.generate_key('encr', master_fpr)
+        encr_sec_info   = self.get_key_info('secret', 'encr', master_fpr)
+        encr_fpr        = encr_sec_info['encr_sec_fingerprint']
+        result          = self.opts.merge(result, encr_sec_info)
+
+        #
+        # generate the auth subkey - provide the fingerprint of the master
+        #
+        self.generate_key('auth', master_fpr)
+        auth_sec_info   = self.get_key_info('secret', 'auth', master_fpr)
+        auth_fpr        = auth_sec_info['auth_sec_fingerprint']
+        result          = self.opts.merge(result, auth_sec_info)
+
+        #
+        # export the keys so they can be added to the result
+        #
+        msg.vvvv("exporting keys")
+        result['master_sec_key_armored'] = self.export_keys('sec', master_fpr)
+        result['master_pub_key_armored'] = self.export_keys('pub', master_fpr)
+        result['sign_sec_key_armored'] = self.export_keys('ssb', sign_fpr)
+        result['encr_sec_key_armored'] = self.export_keys('ssb', encr_fpr)
+        result['auth_sec_key_armored'] = self.export_keys('ssb', auth_fpr)
+
+        #
+        # add the remaining info from the class options
+        #
+        msg.vvvv("adding remaining information to result")
+        result['master_sec_keytype'] = self.opts.get('gpgkey_type')
+        result['master_sec_keyuid'] = self.opts.get('gpgkey_uid')
+        result['master_sec_password'] = self.passphrase
+
+        # return
+        return result
+
+
+    # function to verify we have the right gnupg2 version
+    def check_versions(self):
+
+        msg.vvvv("checking gnupg and libgcrypt versions")
 
         # set command
         cmd = [self.opts.get('gpgkey_bin')]
@@ -57,7 +123,7 @@ class GenerateGPGKey:
 
         # sanity check
         if re.compile(regex_gpg).groups < 1:
-            self.error("could not find a valid gpg version number in string [{}]".format(stdout[0]))
+            msg.fail("could not find a valid gpg version number in string [{}]".format(stdout[0]))
 
         # find libgcrypt version
         regex_libgcrypt = r"libgcrypt\s+(\d+\.\d+\.?\d*)$"
@@ -65,135 +131,512 @@ class GenerateGPGKey:
 
         # sanity check
         if re.compile(regex_libgcrypt).groups < 1:
-            self.error("could not find a valid gpg version number in string [{}]".format(stdout[1]))
+            msg.fail("could not find a valid libgcrypt version number in string [{}]".format(stdout[1]))
 
-        # return versions
-        return {'gpg'       : match_gpg.group(1),
-                'libgcrypt' : match_libgcrypt.group(1),
-               }
+        # check versions
+        versions        =  {'gpg'       : match_gpg.group(1),
+                            'libgcrypt' : match_libgcrypt.group(1),
+                           }
+        req_gpg         = '2.1.17'
+        req_libgcrypt   = '1.8.1'
 
-    #def gen_master(self, keytype, key):
+        # sanity check
+        if version.parse(versions['gpg']) < version.parse(req_gpg) or version.parse(versions['libgcrypt']) < version.parse(req_libgcrypt):
+            msg.fail("gpg version [{}] and libgcrypt version [{}] are required; [{}] and [{}] given".format(req_gpg, req_libgcrypt, versions['gpg'], versions['libgcrypt']))
+        else:
+            msg.vvvv("gnupg version [{}] and libgcrypt version [{}] detected".format(versions['gpg'], versions['libgcrypt']))
 
-    # generate gpg keyfiles
-    def generate_old(self):
+        return True
 
-        # get common info for keys
-        title    = self.opts.get('gpgkey_name')
-        username = self.opts.get('gpgkey_email')
-        keytype  = self.opts.get('gpgkey_type')
-        keybits  = self.opts.get('gpgkey_length')
-        hostname = self.opts.get('gpgkey_hostname')
-        expires  = self.opts.get('gpgkey_expiration')
-        pref     = self.opts.get('gpgkey_pref')
-        pwd_sign = self.opts.get('gpgkey_password_sign')
-        pwd_encr = self.opts.get('gpgkey_password_encr')
 
-        # determine keyring/secring
-        homedir = self.opts.get_tmp_dir()
-        tmpfile = self.opts.get_tmp_filename(False)
-        keyring = "key_{}.gpg".format(tmpfile)
-        secring = "sec_{}.gpg".format(tmpfile)
+    # function to write a gpg.conf file
+    def create_gpg_conf(self):
 
-        # debug
-        display.vvv("gpg homedir: {}".format(homedir))
-        display.vvv("gpg keyring: {}".format(keyring))
-        display.vvv("gpg secring: {}".format(secring))
+        msg.vvv("creating gpg.conf")
 
-        # init gpg
-        gpg = gnupg.GPG(homedir=homedir, keyring=keyring, secring=secring)
+        # set configuration
+        lines   = self.opts.get('gpgkey_conf')
+        gpgconf = ""
+        for l in lines:
+            gpgconf = "{}\n{}".format(gpgconf, l)
 
-        # generate keys
-        display.vvv("generating sign key")
-        sign_key = self.gen_gpgkey_default(gpg, "[sign]", keytype, keybits, title, username, hostname, pwd_sign, expires, pref)
-        display.vvv("generating encrypt key")
-        encr_key = self.gen_gpgkey_default(gpg, "[encryption]", keytype, keybits, title, username, hostname, pwd_encr, expires, pref)
+        # write config file
+        file    = "{}{}".format(self.opts.get_tmp_dir(),'gpg.conf')
+        hlp.write_tmp_file(file, gpgconf)
 
-        # set fingerprints
-        display.vvv("getting sign key fingerprints")
-        sign_fpr = sign_key.fingerprint
-        display.vvv("getting encrypt key fingerprints")
-        encr_fpr = encr_key.fingerprint
 
-        # sign encryption key with sign key
-        display.vvv("signing encryption key with sign key")
-        gpg.sign_key(encr_fpr, default_key=sign_fpr, passphrase=pwd_sign)
+    # function to initialize the gnupg2 homedir
+    def init_gnupg_dir(self):
 
-        # get keys
-        display.vvv("getting public key")
-        encr_pubk = gpg.export_keys(encr_fpr)
-        display.vvv("getting private key")
-        encr_seck = gpg.export_keys(encr_fpr, secret=True, subkeys=True)
+        # simply running the list command will make gnupg create the trustdb etc
+        cmd = [self.opts.get('gpgkey_bin')]
+        args = self.get_publist_args()
+        cmd += args
 
-        # get key meta
-        display.vvv("getting sign key meta")
-        sign_meta = gpg.list_sigs(sign_fpr)[0] # contains only 1 item
-        display.vvv("getting encrypt key meta")
-        encr_meta = gpg.list_sigs(encr_fpr)[0] # contains only 1 item
+        # run subprocess; ignore any output, even though gpg sends the init messages to stderr
+        proc = Process("gpg", cmd, failonstderr=False).run()
 
-        # set results
+
+    # function to write password file
+    def create_pwd_file(self):
+
+        msg.vvv("creating password file")
+
+        # write password file
+        file    = "{}{}".format(self.opts.get_tmp_filename(),'.pwd')
+        hlp.write_tmp_file(file, self.passphrase)
+
+        # return full path to of password file
+        return file
+
+
+    # get key curve for Ed25519 keys
+    def get_key_curvebits(self, usage):
+
+        #
+        # KEY USAGE & ALGORITHMS:
+        #
+        # the value of the option [gpgkey_type] determines which combination of key-usage and algo are selected
+        #
+        # supported algorithms are:         rsa|ed25519|cv25519
+        # supported key usage values are:   cert|sign|auth|encr
+        #
+        # supported combinations are:
+        # +-----------+------+------+------+------+
+        # | algorithm | cert | sign | auth | encr |
+        # +-----------+------+------+------+------+
+        # | rsa       | yes  | yes  | yes  | yes  |
+        # | ed25519   | yes  | yes  | yes  | no   |
+        # | cv25519   | no   | no   | no   | yes  |
+        # +-----------+------+------+------+------+
+        #
+        # DEFAULT KEY SETUP:
+        #
+        # This module will always generate a set of 4 keys:
+        # 1 master key [cert]
+        # - subkey for signing [sign]
+        # - subkey for authorization [auth]
+        # - subkey for encryptio [encr]
+        #
+
+        # check key type
+        if self.opts.get('gpgkey_type') == 'ed25519' and usage == 'encr':
+            return 'cv25519'
+        elif self.opts.get('gpgkey_type') == 'ed25519':
+            return 'ed25519'
+        else:
+            return 'rsa{}'.format(self.opts.get('gpgkey_bits'))
+
+
+    # get cmd arguments
+    def get_generate_args(self, usage, fpr=None):
+
+        # set quick argument
+        quick = {
+            'cert'  : "generate-key",
+            'auth'  : "add-key",
+            'sign'  : "add-key",
+            'encr'  : "add-key",
+        }
+
+        # uid or fpr
+        # uid for master key, fpr for subkeys
+        if fpr is not None:
+            uidfpr = fpr
+        else:
+            uidfpr = self.opts.get('gpgkey_uid')
+
+        # set arguments
+        args = ['--batch',
+                '--homedir={}'.format(self.opts.get_tmp_dir()),
+                '--passphrase-file={}'.format(self.pwdfile),
+                '--pinentry-mode=loopback',
+                '--cert-digest-algo={}'.format(self.opts.get('gpgkey_digest')),
+                '--digest-algo={}'.format(self.opts.get('gpgkey_digest')),
+                '--s2k-cipher-algo={}'.format(self.opts.get('gpgkey_s2k_cipher')),
+                '--s2k-digest-algo={}'.format(self.opts.get('gpgkey_s2k_digest')),
+                '--s2k-mode={}'.format(self.opts.get('gpgkey_s2k_mode')),
+                '--s2k-count={}'.format(self.opts.get('gpgkey_s2k_count')),
+                '--quick-{}'.format(quick.get(usage)),
+                '{}'.format(uidfpr),
+                '{}'.format(self.get_key_curvebits(usage)),
+                '{}'.format(usage),
+                '{}'.format(self.opts.get('gpgkey_expirationdate')),
+               ]
+
+        return args
+
+
+    # get publist args
+    def get_publist_args(self):
+
+        # arguments to list public keys
+        return ['--homedir={}'.format(self.opts.get_tmp_dir()),
+                '--list-keys',
+               '--with-colons',
+               ]
+
+
+    # get seclist args
+    def get_seclist_args(self):
+
+        # arguments to list secret keys
+        return ['--homedir={}'.format(self.opts.get_tmp_dir()),
+                '--list-secret-keys',
+                '--with-colons',
+               ]
+
+
+    # generate key
+    def generate_key(self, usage, fpr=None):
+
+        # create the command to generate a new master key
+        cmd = [self.opts.get('gpgkey_bin')]
+        args = self.get_generate_args(usage, fpr)
+        cmd += args
+
+        # run subprocess; catch the output but don't fail on stderr as gnupg outputs key creation details to stderr instead of stdout
+        proc = Process("gpg", cmd, failonstderr=False).run()
+
+        return True
+
+
+    # export keys
+    # unarmored keys are not exported; since they are binary the data might get scrambled
+    def export_keys(self, ltype, fpr):
+
+        # set keyfiles
+        ascfile = "{}{}".format(self.opts.get_tmp_filename(),'.asc')
+
+        # set export type
+        if ltype == 'sec':
+            exp = '-secret-keys'
+        elif ltype == 'ssb':
+            exp = '-secret-subkeys'
+        else:
+            exp = ''
+
+        # set base command
+        cmd = [self.opts.get('gpgkey_bin')]
+        args = ['--homedir={}'.format(self.opts.get_tmp_dir()),
+                '--passphrase-file={}'.format(self.pwdfile),
+                '--pinentry-mode=loopback',
+                '--quiet',
+                '--armor',
+                '--export{}'.format(exp),
+                #'--output={}'.format(ascfile) - output to stdout instead
+               ]
+        cmd += args
+
+        # output unencrypted file
+        proc = Process("gpg", cmd, failonstderr=False).run()
+
+        # return stdout as it contains the armored key
+        return proc.stdout
+
+
+    # fetch key information
+    def get_key_info(self, keytype, usage, fpr=None):
+
+        msg.vvvv("attempt to extract key info from generated keys [{}] with usage [{}]".format(keytype, usage))
+
+        # create the command to generate a new master key
+        cmd = [self.opts.get('gpgkey_bin')]
+        listargs = self.get_seclist_args() if keytype == 'secret' else self.get_publist_args()
+        cmd += listargs
+
+        # run subprocess; catch the output but don't fail on stderr as gnupg outputs key creation details to stderr instead of stdout
+        proc = Process("gpg", cmd, failonstderr=False).run()
+
+        #
+        # SAMPLE DATA
+        #
+        # sec:u:256:22:41343326127FD34F:1566067845:::u:::cC:::+::ed25519:::0:
+        # fpr:::::::::0D18E4B6B2698560729D00CE41343326127FD34F:
+        # grp:::::::::54AA357FD85BA4D4B7CE86016A3734F00B1BDD07:
+        # uid:u::::1566067845::00B9F0DC33EE293CC1E687FFA54A5EA805FD78F8::testing145 (TESTINGCOMM) <test@netson.nld>::::::::::0:
+        #
+
+        #
+        # line types
+        #
+        # *** Field 1 - Type of record
+        # 
+        #     - pub :: Public key
+        #     - crt :: X.509 certificate
+        #     - crs :: X.509 certificate and private key available
+        #     - sub :: Subkey (secondary key)
+        #     - sec :: Secret key
+        #     - ssb :: Secret subkey (secondary key)
+        #     - uid :: User id
+        #     - uat :: User attribute (same as user id except for field 10).
+        #     - sig :: Signature
+        #     - rev :: Revocation signature
+        #     - rvs :: Revocation signature (standalone) [since 2.2.9]
+        #     - fpr :: Fingerprint (fingerprint is in field 10)
+        #     - pkd :: Public key data [*]
+        #     - grp :: Keygrip
+        #     - rvk :: Revocation key
+        #     - tfs :: TOFU statistics [*]
+        #     - tru :: Trust database information [*]
+        #     - spk :: Signature subpacket [*]
+        #     - cfg :: Configuration data [*]
+        # 
+        #     Records marked with an asterisk are described at [[*Special%20field%20formats][*Special fields]].        #
+        #
+
+        #
+        # *** Field 12 - Key capabilities
+        # 
+        #     The defined capabilities are:
+        # 
+        #     - e :: Encrypt
+        #     - s :: Sign
+        #     - c :: Certify
+        #     - a :: Authentication
+        #     - ? :: Unknown capability
+        # 
+        #     A key may have any combination of them in any order.  In addition
+        #     to these letters, the primary key has uppercase versions of the
+        #     letters to denote the _usable_ capabilities of the entire key, and
+        #     a potential letter 'D' to indicate a disabled key.
+        #
+
+        # determine which codes to look for
+        if keytype == 'secret' and usage == 'cert':
+            ltype = 'sec' # secret master key
+        elif keytype == 'secret':
+            ltype = 'ssb'
+        elif keytype == 'public' and usage == 'cert':
+            ltype = 'pub'
+        else:
+            ltype = 'sub'
+
+        if usage == 'cert':
+            lcapb = 'c'
+        elif usage == 'sign':
+            lcapb = 's'
+        elif usage == 'auth':
+            lcapb = 'a'
+        else:
+            lcapb = 'e'
+
+        #
+        # FIELD TYPES:
+        #
+        # - Field 1 - Type of record
+        # - Field 2 - Validity
+        # - Field 3 - Key length
+        # - Field 4 - Public key algorithm
+        # - Field 5 - KeyID
+        # - Field 6 - Creation date
+        # - Field 7 - Expiration date
+        # - Field 8 - Certificate S/N, UID hash, trust signature info
+        # - Field 9 -  Ownertrust
+        # - Field 10 - User-ID
+        # - Field 11 - Signature class
+        # - Field 12 - Key capabilities
+        # - Field 13 - Issuer certificate fingerprint or other info
+        # - Field 14 - Flag field
+        # - Field 15 - S/N of a token
+        # - Field 16 - Hash algorithm
+        # - Field 17 - Curve name
+        # - Field 18 - Compliance flags
+        # - Field 19 - Last update
+        # - Field 20 - Origin
+        # - Field 21 - Comment
+        #
+
+        # set empty result
+        tmpresult = {}
+
+        # determine the correct line
+        correct_line = False
+        main_lines = ['sec','ssb','pub','sub']
+        follow_lines = ['fpr','grp','uid']
+
+        # indexes start at 0
+        # main parts are for main_lines only
+        mainparts = {
+            'type'              : 0,
+            'key_length'        : 2,
+            'pubkey_algorithm'  : 3,
+            'keyid'             : 4,
+            'creationdate'      : 5,
+            'expirationdate'    : 6,
+            'key_capabilities'  : 11,
+            'hash_algorithm'    : 15,
+            'curve_name'        : 16,
+        }
+
+        # indexes start at 0
+        # follow parts for follow_lines only
+        followparts = {
+            'type'              : 0,
+            'userid'            : 9, # this is the fingerprint for fpr records and the keygrip for grp records
+        }
+
+        #
+        # 9.1.  Public-Key Algorithms
+        # 
+        #       ID           Algorithm
+        #       --           ---------
+        #       1          - RSA (Encrypt or Sign) [HAC]
+        #       2          - RSA Encrypt-Only [HAC]
+        #       3          - RSA Sign-Only [HAC]
+        #       16         - Elgamal (Encrypt-Only) [ELGAMAL] [HAC]
+        #       17         - DSA (Digital Signature Algorithm) [FIPS186] [HAC]
+        #       18         - Reserved for Elliptic Curve
+        #       19         - Reserved for ECDSA
+        #       20         - Reserved (formerly Elgamal Encrypt or Sign)
+        #       21         - Reserved for Diffie-Hellman (X9.42,
+        #                    as defined for IETF-S/MIME)
+        #       22         - Ed25519
+        #       100 to 110 - Private/Experimental algorithm
+        #
+        pubkeys = {
+            '1'                 : 'RSA (Encrypt or Sign)',
+            '2'                 : 'RSA Encrypt-Only',
+            '3'                 : 'RSA Sign-Only',
+            '16'                : 'Elgamal (Encrypt-Only)',
+            '17'                : 'DSA [FIPS186]',
+            '18'                : 'Cv25519',
+            '22'                : 'Ed25519',
+        }
+
+        msg.vvvv("looping through key details")
+
+        # loop through lines
+        for l in proc.getstdout():
+
+            #print("line: {}".format(l))
+            # split line into pieces
+            pieces = l.split(":")
+
+            # get current type
+            ctype = pieces[mainparts.get('type')]
+
+            # check for usage/capabilities
+            if ctype in main_lines:
+                ccapb = pieces[mainparts.get('key_capabilities')]
+            else:
+                ccapb = ""
+
+            # check if capabilities OK
+            if lcapb in ccapb:
+                capbok = True
+            else:
+                capbok = False
+
+            #print("usage: {} | ctype: {} | ccapb: {} | lcapb: {} | capbok: {}".format(usage,ctype,ccapb,lcapb,capbok))
+
+            # check for main lines
+            if ctype in main_lines and capbok and not correct_line:
+
+                # we must be on the correct line
+                #print("we are now on the correct line")
+                correct_line = True
+                current_line = ctype
+
+                for x in mainparts.keys():
+                    
+                    # skip the type
+                    if x == 'type':
+                        continue
+
+                    # add the other info to the tmpresult array
+                    y = '{}_{}_{}'.format(usage, ctype, x)
+                    if x == 'pubkey_algorithm':
+                        p = pieces[mainparts.get(x)]
+                        z = pubkeys.get(p) if p is not None else ''
+                    else:
+                        z = pieces[mainparts.get(x)]
+
+                    tmpresult[y] = z
+
+            # check for follow lines
+            elif correct_line and ctype in follow_lines:
+
+                for x in followparts.keys():
+
+                    # skip the type
+                    if x == 'type':
+                        continue
+
+                    # add the other info to the tmpresult array
+
+                    y = '{}_{}_{}_{}'.format(usage, current_line, ctype, x)
+                    if x == 'pubkey_algorithm':
+                        p = pieces[followparts.get(x)]
+                        z = pubkeys.get(p) if p is not None else ''
+                    else:
+                        z = pieces[followparts.get(x)]
+
+                    tmpresult[y] = z
+
+            # if not, we have reached a new key or the end
+            else:
+                #print("we are no longer on the correct line")
+                correct_line = False
+
+        msg.vvvv("renaming tmpresult keys; usage [{}]".format(usage))
+
+        #
+        # MAPPING
+        #
+        mapping = {
+            'cert_sec_fpr_userid'       : 'master_sec_fingerprint',
+            'cert_sec_curve_name'       : 'master_sec_keycurve',
+            'cert_sec_grp_userid'       : 'master_sec_keygrip',
+            'cert_sec_key_length'       : 'master_sec_keybits',
+            'cert_sec_creationdate'     : 'master_sec_creationdate',
+            'cert_sec_keyid'            : 'master_sec_keyid',
+            'cert_sec_expirationdate'   : 'master_sec_expirationdate',
+            'sign_ssb_fpr_userid'       : 'sign_sec_fingerprint',
+            'sign_ssb_curve_name'       : 'sign_sec_keycurve',
+            'sign_ssb_grp_userid'       : 'sign_sec_keygrip',
+            'sign_ssb_key_length'       : 'sign_sec_keybits',
+            'sign_ssb_creationdate'     : 'sign_sec_creationdate',
+            'sign_ssb_keyid'            : 'sign_sec_keyid',
+            'sign_ssb_expirationdate'   : 'sign_sec_expirationdate',
+            'encr_ssb_fpr_userid'       : 'encr_sec_fingerprint',
+            'encr_ssb_curve_name'       : 'encr_sec_keycurve',
+            'encr_ssb_grp_userid'       : 'encr_sec_keygrip',
+            'encr_ssb_key_length'       : 'encr_sec_keybits',
+            'encr_ssb_creationdate'     : 'encr_sec_creationdate',
+            'encr_ssb_keyid'            : 'encr_sec_keyid',
+            'encr_ssb_expirationdate'   : 'encr_sec_expirationdate',
+            'auth_ssb_fpr_userid'       : 'auth_sec_fingerprint',
+            'auth_ssb_curve_name'       : 'auth_sec_keycurve',
+            'auth_ssb_grp_userid'       : 'auth_sec_keygrip',
+            'auth_ssb_key_length'       : 'auth_sec_keybits',
+            'auth_ssb_creationdate'     : 'auth_sec_creationdate',
+            'auth_ssb_keyid'            : 'auth_sec_keyid',
+            'auth_ssb_expirationdate'   : 'auth_sec_expirationdate',
+        }
+
+        #
+        # rename result keys / only use the relevant ones from the mapping
+        #
         result = {}
-        result['private_encrypt'] = gpg.export_keys(encr_fpr, secret=True, subkeys=True)
-        result['private_encrypt_password'] = pwd_encr
-        result['private_encrypt_keyid'] = encr_meta['keyid']
-        result['private_encrypt_fingerprint'] = encr_fpr
-        result['private_encrypt_createddate'] = encr_meta['date']
-        result['private_encrypt_expirydate'] = encr_meta['expires'] or "never"
-        result['private_sign'] = gpg.export_keys(sign_fpr, secret=True, subkeys=True)
-        result['private_sign_password'] = pwd_sign
-        result['private_sign_keyid'] = sign_meta['keyid']
-        result['private_sign_fingerprint'] = sign_fpr
-        result['private_sign_createddate'] = sign_meta['date']
-        result['private_sign_expirydate'] = sign_meta['expires'] or "never"
-        result['public_encrypt'] = gpg.export_keys(encr_fpr)
-        result['public_encrypt_keyid'] = encr_meta['keyid']
-        result['public_encrypt_fingerprint'] = encr_fpr
-        result['public_encrypt_createddate'] = encr_meta['date']
-        result['public_encrypt_expirydate'] = encr_meta['expires'] or "never"
-        result['public_sign'] = gpg.export_keys(sign_fpr)
-        result['public_sign_keyid'] = sign_meta['keyid']
-        result['public_sign_fingerprint'] = sign_fpr
-        result['public_sign_createddate'] = sign_meta['date']
-        result['public_sign_expirydate'] = sign_meta['expires'] or "never"
+        resultiterator = tmpresult.copy()
+        for k,v in resultiterator.items():
+            
+            #print("trying to rename {}".format(k))
+            # only for keys which exist in the mapping dict
+            if k in mapping:
+                #print("  {} is in mapping, renaming".format(k))
+                nk = mapping.get(k)
+                result[nk] = tmpresult.pop(k)
 
-        # delete temp keys
-        os.remove(os.path.join(homedir, keyring))
-        os.remove(os.path.join(homedir, secring))
-        os.remove(os.path.join(homedir, "{}~".format(keyring)))
-        os.remove(os.path.join(homedir, "random_seed"))
-        os.remove(os.path.join(homedir, "trustdb.gpg"))
-
-        # return
+        #
+        # return results
+        #
         return result
 
-    # generate keyfile
-    def gen_gpgkey_default(self, gpg, sigenc, keytype, keylength, title, username, hostname, password, expires, preferences):
 
-        # set input
-        args = {'name_real': "{} {}".format(username, sigenc),
-                'name_email': title,
-                'name_comment': hostname,
-                'expire_date': expires,
-                'key_type': keytype.upper(),
-                'key_length': int(keylength),
-                'key_usage': 'encrypt,sign,auth', # not implemented
-                'subkey_type': keytype.upper(),
-                'subkey_length': int(keylength),
-                'passphrase': password,
-                'preferences': preferences}
 
-        # generate key
-        inp = gpg.gen_key_input(**args)
-        key = gpg.gen_key(inp)
-        fpr = key.fingerprint
 
-        # return key object
-        return key
 
-    # function to cleanup
-    def cleanup(self, tempfile, filename, sshkeys, filenames):
 
-        # delete tmp files
-        self.opts.delete_tmp_files(tempfile, filenames)
 
-        # remove tmpdir
-        self.opts.delete_tmp_dir(os.path.dirname(tempfile))

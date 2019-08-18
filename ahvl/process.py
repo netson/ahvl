@@ -1,14 +1,14 @@
 #
 # import modules
 #
+from ahvl.helper import AhvlMsg, AhvlHelper
 import subprocess
-from ansible.errors import AnsibleError, AnsibleParserError
-from ansible.utils.display import Display
 
 #
-# ansible display
+# helper/message
 #
-display = Display()
+msg = AhvlMsg()
+hlp = AhvlHelper()
 
 #
 # process
@@ -40,7 +40,9 @@ class Process(object):
         if self.proc == "openssl":
             sensitive = ["pass:", "-passin", "-passout"]
         if self.proc == "puttygen":
-            sensitive = ["-N"]
+            sensitive = ["--password-file"]
+        if self.proc == "gpg":
+            sensitive = ["--passphrase-file"]
 
         # create a copy of the list to prevent iteration issues when removing items
         safeargs = list(self.cmd)
@@ -65,7 +67,7 @@ class Process(object):
 
         # check if stderr contains any lines
         if len(self.stderrlines) > 0 and self.failonstderr:
-            raise AnsibleError("the process generated an error:\n{}".format("\n".join(self.stderrlines)))
+            msg.fail("the process generated an error:\n{}".format("\n".join(self.stderrlines)))
 
     # set stderr and stdout
     def __set_result(self):
@@ -80,7 +82,7 @@ class Process(object):
         # sanity check
         accepted = ["ssh-keygen", "openssl", "puttygen", "gpg"]
         if not proc in accepted:
-            raise AnsibleError("given process name [{}] is unknown".format(proc))
+            msg.fail("given process name [{}] is unknown".format(proc))
 
         # set process and return
         self.proc = proc
@@ -108,13 +110,13 @@ class Process(object):
 
         # output debug info
         if self.shell == True:
-            display.vvv("about to run the following subprocess (shell): [{}]".format(self.proc))
-            display.vvv("[{}]".format(self.cmd))
+            msg.vvvv("about to run the following subprocess (shell): [{}]".format(self.proc))
+            msg.vvvv("[{}]".format(self.cmd))
         else:
             # remove sensitive arguments before printing debug info
             printable = self.__get_safe_args()
-            display.vvv("about to run the following subprocess (sensitive information has been removed): [{}]".format(self.proc))
-            display.vvv("[{}]".format(subprocess.list2cmdline(printable)))
+            msg.vvvv("about to run the following subprocess (sensitive information has been removed): [{}]".format(self.proc))
+            msg.vvvv("[{}]".format(subprocess.list2cmdline(printable)))
             
         # spawn subprocess
         sp = subprocess.Popen(self.cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=self.shell)
@@ -123,7 +125,7 @@ class Process(object):
 
         # check exit/return code
         if rc != 0:
-            raise AnsibleError("an error occurred for [{}]; the process exited with code [{}]\n".format(self.proc, rc) +
+            msg.fail("an error occurred for [{}]; the process exited with code [{}]\n".format(self.proc, rc) +
                                "the process provided the following output: [{}]".format(self.stderr))
 
         # set result and fail on error

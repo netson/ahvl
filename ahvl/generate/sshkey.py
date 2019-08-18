@@ -1,7 +1,7 @@
 #
 # import modules
 #
-from ahvl.options.generatesshkey import OptionsGenerateSSHKey
+from ahvl.options.generate.sshkey import OptionsGenerateSSHKey
 from ahvl.process import Process
 from ansible.utils.display import Display
 import re
