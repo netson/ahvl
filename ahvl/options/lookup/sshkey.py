@@ -2,57 +2,86 @@
 # import modules
 #
 from ahvl.options.base import OptionsBase
+from ahvl.helper import AhvlMsg, AhvlHelper
+
+#
+# helper/message
+#
+msg = AhvlMsg()
+hlp = AhvlHelper()
 
 #
 # OptionsLookupSSHKey
 #
 class OptionsLookupSSHKey(OptionsBase):
 
-    def prefix(self):
-        self.prefix = "ahvl_sshkey"
+    # set option prefix
+    def get_prefix(self):
 
-    def required(self):
+        # return option prefix
+        return "ahvl_sshkey"
 
-        # return list of required options
-        return [
-            'key_username',
-            'key',
-        ]
 
-    def defaults(self):
+    # set path
+    # useable variables:
+    # - {find}
+    # - {hostname}
+    def get_path(self):
 
-        # set default option values
-        options = {
-            'basepath'      : "users",                      # basepath
-            'key_username'  : None,                         # path to find secret
-            'fullpath'      : None,                         # path to find secret; set in validate()
-            'key'           : None,                         # which part to get (public, private, etc)
-            'renew'         : False,                        # force generating a new sshkey regardless if it exists or not
-                                                            # be careful with this setting, as it will renew on each iteration
+        # return basepath
+        return "sshkeys/{find}"
+
+
+    # set default options
+    def get_defaults(self):
+
+        # set default option values - dict
+        return {
+            'sshkey_username'   : None,                         # username for key
         }
 
-        # return
-        return options
+
+    # calculate any remaining options
+    def get_appended(self):
+
+        # set shorthand
+        o = self.options
+
+        # set options to append
+        find            = o['find']
+        sshkey_username = o['sshkey_username']
+
+        # set username/find
+        if hlp.isempty(find):
+            find            = sshkey_username
+        if hlp.isempty(sshkey_username):
+            sshkey_username = find
+
+        # return list of overide options or calculated options
+        return {
+            'find'              : find,
+            'sshkey_username'   : sshkey_username,
+        }
+
+
+    # set required options
+    def get_required(self):
+
+        # return required options - list
+        return ['sshkey_username',
+               ]
+
 
     def validate(self):
 
-        # write shorthand
+        # set shorthand
         o = self.options
-
-        #
-        # set path
-        #
-        if self.isempty(o['fullpath']):
-            fullpath = "{}/{}".format(
-                "{}".format(o['basepath']).strip("/"),
-                "{}".format(o['key_username']).strip("/")
-            )
-            self.set('fullpath', fullpath)
 
         #
         # set accepted values
         #
-        allowed_key = ["private", # default openssh output
+        allowed_in  = ["private", # default openssh output
+                       "password",
                        "private_keybits",
                        "private_keytype",
                        "private_pkcs8",
@@ -76,8 +105,9 @@ class OptionsLookupSSHKey(OptionsBase):
         #
         # sanity checks
         #
-        if o['key'] not in allowed_key:
-            self.error("value for ret parameter is invalid; [{}] given, but expected one of {}".format(o['key'], allowed_key))
+        if o['in'] not in allowed_in:
+            msg.fail("value for [in] parameter is invalid; [{}] given, but expected one of {}".format(o['in'], allowed_in))
 
-        if (self.isempty(o['basepath']) and self.isempty(o['key_username'])) or self.isempty(o['fullpath']):
-            self.error("either provide a basepath and key_username, or provide the fullpath directly");
+
+        if hlp.isempty(o['path']):
+            msg.fail("path is missing");

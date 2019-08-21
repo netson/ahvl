@@ -2,57 +2,106 @@
 # import modules
 #
 from ahvl.options.base import OptionsBase
+from ahvl.helper import AhvlMsg, AhvlHelper
+
+#
+# helper/message
+#
+msg = AhvlMsg()
+hlp = AhvlHelper()
 
 #
 # OptionsGenerateSSHHostKey
 #
 class OptionsGenerateSSHHostKey(OptionsBase):
 
-    def prefix(self):
-        self.prefix = "ahvl_generate_sshkey"
+    # set option prefix
+    def get_prefix(self):
 
-    def required(self):
+        # return option prefix
+        return "ahvl_generate_sshhostkey"
 
-        # return list of required options
-        return [
-            'hostkey_type',
-            'ahvl_tmppath',
-            'hostkey_hostname',
-        ]
 
-    def defaults(self):
+    # set path
+    # useable variables:
+    # - {find}
+    # - {hostname}
+    def get_path(self):
 
-        # set default option values
-        options = {
-            'hostkey_type'      : "ed25519",                        # type of keys to generate when generating hostkeys
-            'hostkey_strength'  : "strong",                         # hostkey strength; see gen_sshhostkey function for actual values
-            'hostkey_comment'   : None,                             # sshhostkey comment
-            'bin_keygen'        : self.find_binary("ssh-keygen"),   # full path to ssh-keygen binary
-            'hostkey_hostname'  : self.hostname,                    # hostname for the sshhostkeys
+        # return basepath
+        return None
+
+
+    # set default options
+    def get_defaults(self):
+
+        # set default option values - dict
+        return {
+            'sshhostkey_type'       : None,                             # type of keys to generate when generating hostkeys
+            'sshhostkey_strength'   : "strong",                         # hostkey strength; see gen_sshhostkey function for actual values
+            'sshhostkey_comment'    : None,                             # sshhostkey comment
+            'sshhostkey_bin_keygen' : None,                             # full path to ssh-keygen binary
         }
 
-        # return
-        return options
+
+    # calculate any remaining options
+    def get_appended(self):
+
+        # set shorthand
+        o = self.options
+
+        # set options to append
+        find                    = o['find']
+        sshhostkey_type         = o['sshhostkey_type']
+        sshhostkey_comment      = o['sshhostkey_comment']
+        sshhostkey_bin_keygen   = o['sshhostkey_bin_keygen']
+
+        # set find/sshhostkey_type
+        if hlp.isempty(find):
+            find = sshhostkey_type
+        if hlp.isempty(sshhostkey_type):
+            sshhostkey_type = find
+
+        # set comment
+        if hlp.isempty(sshhostkey_comment):
+            sshhostkey_comment = o['hostname']
+
+        # determine binary
+        if hlp.isempty(sshhostkey_bin_keygen):
+            sshhostkey_bin_keygen  = hlp.find_binary('ssh-keygen')
+
+        # return list of overide options or calculated options
+        return {
+            'find'                  : find,
+            'sshhostkey_type'       : sshhostkey_type,
+            'sshhostkey_comment'    : sshhostkey_comment,
+            'sshhostkey_bin_keygen' : sshhostkey_bin_keygen,
+        }
+
+
+    # set required options
+    def get_required(self):
+
+        # return required options - list
+        return ['sshhostkey_type',
+                'sshhostkey_strength',
+                'sshhostkey_comment',
+                'sshhostkey_bin_keygen',
+               ]
+
 
     def validate(self):
 
-        # write shorthand
+        # set shorthand
         o = self.options
 
         #
-        # set allowed key types
-        # rsa1, dsa and ecdsa are explicitly not supported
+        # set accepted values
         #
-        allowed = ["ed25519", "rsa"]
-
-        #
-        # set basepath and comment
-        #
-        if o['hostkey_comment'] is None:
-            self.set('hostkey_comment', o['hostkey_hostname'])
+        allowed_type = ["ed25519", "rsa"]
 
         #
         # sanity checks
         #
-        if o['hostkey_type'] not in allowed:
-            self.error("invalid sshhostkey type specified; recieved [{}] but expected on of {}".format(o['hostkey_type'], allowed))
+        if o['sshhostkey_type'] not in allowed_type or o['find'] not in allowed_type:
+            msg.fail("value for [sshhostkey_type/find] parameter is invalid; [{}] given, but expected one of {}".format(o['sshhostkey_type'], allowed_type))

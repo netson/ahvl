@@ -83,6 +83,8 @@ class HashiVault:
 
         # create the path so it can be written to
         except hvac.exceptions.InvalidPath:
+
+            # using None as this is used to check if the secret exists in the find_ functions
             secret_dict = { key : None }
             ret = self.client.secrets.kv.v2.create_or_update_secret(
                 path=path,

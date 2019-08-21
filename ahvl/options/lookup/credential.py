@@ -2,17 +2,25 @@
 # import modules
 #
 from ahvl.options.base import OptionsBase
+from ahvl.helper import AhvlMsg, AhvlHelper
+import os
 
 #
-# OptionsGenerateSalt
+# helper/message
 #
-class OptionsGenerateSalt(OptionsBase):
+msg = AhvlMsg()
+hlp = AhvlHelper()
+
+#
+# OptionsLookupCredential
+#
+class OptionsLookupCredential(OptionsBase):
 
     # set option prefix
     def get_prefix(self):
 
         # return option prefix
-        return "ahvl_generate_salt"
+        return "ahvl_credential"
 
 
     # set path
@@ -20,16 +28,16 @@ class OptionsGenerateSalt(OptionsBase):
     # - {find}
     # - {hostname}
     def get_path(self):
-        return None
+
+        # return basepath
+        return "credentials/{find}"
 
 
     # set default options
     def get_defaults(self):
 
         # set default option values - dict
-        return {
-            'salt_chars' : 'itoa64',     # salt charset
-        }
+        return {}
 
 
     # calculate any remaining options
@@ -46,8 +54,7 @@ class OptionsGenerateSalt(OptionsBase):
     def get_required(self):
 
         # return required options - list
-        return ['salt_chars',
-               ]
+        return []
 
 
     def validate(self):
@@ -56,9 +63,7 @@ class OptionsGenerateSalt(OptionsBase):
         o = self.options
 
         #
-        # check allowed salt chars
+        # sanity checks
         #
-        allowed = ['itoa64', 'alnum']
-
-        if o['salt_chars'] not in allowed:
-            msg.fail("option [salt_chars] invalid; [{}] given, but expected one of {}".format(o['salt_chars'], allowed))
+        if hlp.isempty(o['path']):
+            msg.fail("path is missing");

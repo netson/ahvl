@@ -2,49 +2,37 @@
 # import modules
 #
 from ahvl.options.generate.sshhostkey import OptionsGenerateSSHHostKey
+from ahvl.helper import AhvlMsg, AhvlHelper
 from ahvl.process import Process
-from ansible.utils.display import Display
+from packaging import version
 import re
-import os
 
 #
-# ansible display
+# helper/message
 #
-display = Display()
+msg = AhvlMsg()
+hlp = AhvlHelper()
 
 #
 # GenerateSSHHostKey
 #
 class GenerateSSHHostKey:
 
-    def __init__(self, variables, lookup_plugin=None, **kwargs):
+    def __init__(self, lookup_plugin):
 
-        #
-        # options
-        #
-        self.opts = OptionsGenerateSSHHostKey(variables, lookup_plugin, **kwargs)
+        # set lookup plugin
+        self.lookup_plugin  = lookup_plugin
+        self.variables      = lookup_plugin.variables
+        self.kwargs         = lookup_plugin.kwargs
 
-    # generate ssh hostkeyfiles
-    def generate(self):
+        # set options
+        self.opts = OptionsGenerateSSHHostKey(lookup_plugin)
 
-        # get common info for keys
-        # don't use the self.hostname variable for DNS, but the value given by the user
-        hostname = self.opts.get('hostkey_hostname')
-        tempfile = self.opts.get_tmp_filename()
-
-        # SUPPORTED KEYTYPES
-        # +=============================================+
-        # | DESC      :   PRI | PUB | FIP | DNS | # | X |
-        # +=============================================+
-        # | rsa       :    1  |  1  |  6  |     | 8 | A |
-        # | dsa       :    1  |  1  |  6  |     | 8 | B |
-        # | ecdsa     :    1  |  1  |  6  |     | 8 | C |
-        # | ed25519   :    1  |  1  |  6  |     | 8 | D |
-        # +=============================================+
-        # TOTAL                                  32
+        # create temp file
+        self.tmpfile        = self.opts.get_tmp_filename()
 
         # set a bunch of filenames for all different private/public keytypes
-        filenames = {
+        self.filenames = {
             "private"                   : "{}",
             "public"                    : "{}.pub",
             "fingerprint_sha256"        : "{}.pub.fingerprint.sha256",
@@ -59,9 +47,33 @@ class GenerateSSHHostKey:
             "dns_sha256_clean"          : "{}.pub.sshfp.sha256.clean",
         }
 
+
+    # generate ssh hostkeyfiles
+    def generate(self):
+
+        # options shorthand
+        o = self.opts.getall()
+
+        msg.display("generating new SSH host keys; this may take a while")
+
+        #
+        # SUPPORTED KEYTYPES
+        # +=============================================+
+        # | DESC      :   PRI | PUB | FIP | DNS | # | X |
+        # +=============================================+
+        # | rsa       :    1  |  1  |  6  |     | 8 | A |
+        # | dsa       :    1  |  1  |  6  |     | 8 | B | - not supported
+        # | ecdsa     :    1  |  1  |  6  |     | 8 | C | - not supported
+        # | ed25519   :    1  |  1  |  6  |     | 8 | D |
+        # +=============================================+
+        # TOTAL                                  32
+        #
+
+        # set a bunch of filenames for all different private/public keytypes
+
         # set filenames
-        file_key = filenames['private'].format(tempfile)
-        file_pub = filenames['public'].format(tempfile)
+        file_key = self.filenames['private'].format(self.tmpfile)
+        file_pub = self.filenames['public'].format(self.tmpfile)
 
         # set bits for key strength
         sw_rsa = {
@@ -74,8 +86,8 @@ class GenerateSSHHostKey:
         }
 
         # set shorthand for keytype and strength
-        t = self.opts.get('hostkey_type')
-        s = self.opts.get('hostkey_strength')
+        t = o['sshhostkey_type']
+        s = o['sshhostkey_strength']
 
         # get proper bits for selected keytype and strength
         if t == "rsa":
@@ -84,13 +96,13 @@ class GenerateSSHHostKey:
             b = sw_ed25519.get(s)
 
         # merge arguments and command
-        cmd = "{} -b {} -t {} -o -a 100 -f {} -N '' -C '{}'".format(self.opts.get('bin_keygen'), b, t, file_key, self.opts.get('hostkey_comment'))
+        cmd = "{} -b {} -t {} -o -a 100 -f {} -N '' -C '{}'".format(o['sshhostkey_bin_keygen'], b, t, file_key, o['sshhostkey_comment'])
         proc = Process("ssh-keygen", cmd, shell=True).run()
 
         # set result keys
         result = {}
-        result['private'] = self.opts.get_file_contents(file_key)
-        result['public']  = self.opts.get_file_contents(file_pub)
+        result['private'] = hlp.get_file_contents(file_key)
+        result['public']  = hlp.get_file_contents(file_pub)
 
         # generate fingerprints
         result = self.opts.merge(result, self.gen_fingerprints("md5", file_pub))
@@ -99,32 +111,29 @@ class GenerateSSHHostKey:
 
         # generate and merge dns records
         # don't use the self.hostname variable for DNS, but the value given by the user
-        result = self.opts.merge(result, self.gen_dns(hostname, file_pub))
-
-        # save keyfiles or delete temp files
-        filename = "ssh_host_key_{}_{}".format(t, hostname.replace(".", "_"))
-        self.cleanup(tempfile, filename, result, filenames)
+        result = self.opts.merge(result, self.gen_dns(file_pub))
 
         # add keybits; keytype is added to keyname itself in next step
         result['private_keybits'] = str(b)
 
         # rename keys
-        resultiterator = result.copy()
-        for k,v in resultiterator.items():
-            nk = "{}_{}".format(self.opts.get('hostkey_type'), k)
-            result[nk] = result.pop(k)
+        #resultiterator = result.copy()
+        #for k,v in resultiterator.items():
+        #    nk = "{}_{}".format(self.opts.get('sshhostkey_type'), k)
+        #    result[nk] = result.pop(k)
 
         # return
         return result
 
     # generate dns records
-    def gen_dns(self, hostname, pubfile):
+    def gen_dns(self, pubfile):
 
         # generate dns records - output sent to stdout
-        cmd = [self.opts.get('bin_keygen'),   # full path to binary
-               "-r{}".format(hostname),     # hostname of dns records
+        cmd = [self.opts.get('sshhostkey_bin_keygen'),   # full path to binary
+               "-r{}".format(self.opts.get('hostname')),     # hostname of dns records
                "-f{}".format(pubfile)]      # full path to public key
-        
+
+        #
         # SSHFP records consist of three things:
         # 
         # Algorithm
@@ -141,6 +150,7 @@ class GenerateSSHHostKey:
         # [root@localhost ~]# ssh-keygen -r my.domain.com -f ./mykey.pub
         # example.com IN SSHFP 4 1 de3dec1fb5eadf130396a60607f5baa6ace831e8
         # example.com IN SSHFP 4 2 a0a4d61227b08addd0d685ded8e475c396831e6d91ab3ac1adf536425fab431f
+        #
 
         # run process and catch stdout
         proc    = Process("ssh-keygen", cmd).run()
@@ -181,7 +191,7 @@ class GenerateSSHHostKey:
     def gen_fingerprints(self, fptype, pubfile):
 
         # generate fingerprints - output sent to stdout
-        cmd = [self.opts.get('bin_keygen'),   # full path to binary
+        cmd = [self.opts.get('sshhostkey_bin_keygen'),   # full path to binary
                "-l",                        # list fingerprint
                "-v",                        # list visual fingerprint
                "-E{}".format(fptype),       # fingerprint hash algorithm
@@ -195,7 +205,7 @@ class GenerateSSHHostKey:
         # set results
         result = {}
         result['fingerprint_{}'.format(fptype)] = fpline
-        result['fingerprint_{}_clean'.format(fptype)] = self.opts.extract_fingerprint(fpline)
+        result['fingerprint_{}_clean'.format(fptype)] = hlp.extract_fingerprint(fpline)
         result['fingerprint_{}_art'.format(fptype)] = "\n".join(stdout)
 
         # return
@@ -205,7 +215,7 @@ class GenerateSSHHostKey:
     def gen_bubblebabble(self, pubfile):
 
         # generate fingerprints - output sent to stdout
-        cmd = [self.opts.get('bin_keygen'),   # full path to binary
+        cmd = [self.opts.get('sshhostkey_bin_keygen'),   # full path to binary
                "-B",                        # list bubble babble fingerprint
                "-f{}".format(pubfile)]      # full path to public key
 
@@ -217,16 +227,7 @@ class GenerateSSHHostKey:
         # set results
         result = {}
         result['fingerprint_bubblebabble'] = bbline
-        result['fingerprint_bubblebabble_clean'] = self.opts.extract_bubblebabble(bbline)
+        result['fingerprint_bubblebabble_clean'] = hlp.extract_bubblebabble(bbline)
 
         # return
         return result
-
-    # function to cleanup
-    def cleanup(self, tempfile, filename, sshkeys, filenames):
-
-        # delete tmp files
-        self.opts.delete_tmp_files(tempfile, filenames)
-
-        # remove tmpdir
-        self.opts.delete_tmp_dir(os.path.dirname(tempfile))

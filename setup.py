@@ -26,5 +26,5 @@ setup(
         "Operating System :: POSIX :: Linux",
     ],
     keywords = "ansible hashicorp vault lookup",
-    install_requires=['passlib','hvac','packaging'],
+    install_requires=['passlib','hvac','packaging','argon2-cffi'],
 )

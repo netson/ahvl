@@ -20,8 +20,8 @@ class GenerateSalt:
 
         # set lookup plugin
         self.lookup_plugin  = lookup_plugin
-        #self.variables      = lookup_plugin.variables
-        #self.kwargs         = lookup_plugin.kwargs
+        self.variables      = lookup_plugin.variables
+        self.kwargs         = lookup_plugin.kwargs
 
         # set options
         self.opts = OptionsGenerateSalt(lookup_plugin)
@@ -39,11 +39,15 @@ class GenerateSalt:
     def get_length(self):
         
         # return proper length for each hash
-        r = self.opts.get('ret')
-        if r == "bcrypt":
+        r = self.opts.get('out')
+        if r == "argon2":
             return 22
-        elif r == "bcryptsha256":
-            return 22
+        elif r == "grubpbkdf2sha512":
+            return 64
+        elif r == "pbkdf2sha512":
+            return 64
+        elif r == "pbkdf2sha256":
+            return 32
         elif r == "sha256crypt":
             return 16
         elif r == "sha512crypt":

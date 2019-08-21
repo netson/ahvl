@@ -18,19 +18,24 @@ hlp = AhvlHelper()
 #
 class GenerateGPGKey:
 
-    def __init__(self, lookup_plugin, passphrase):
+    def __init__(self, lookup_plugin, passphrase, passphrase2=''):
 
         # set lookup plugin
         self.lookup_plugin  = lookup_plugin
         self.variables      = lookup_plugin.variables
         self.kwargs         = lookup_plugin.kwargs
         self.passphrase     = passphrase
+        self.passphrase2    = passphrase2 # used only when generating set of backup keys (i.e. duplicity)
 
         # set options
         self.opts = OptionsGenerateGPGKey(lookup_plugin)
 
-        # create password file
-        self.pwdfile        = self.create_pwd_file()
+        # create password files
+        self.tmpfile        = self.opts.get_tmp_filename()
+        self.pwdfile        = hlp.create_pwd_file(self.tmpfile, passphrase)
+        self.tmpfile2       = self.opts.get_tmp_filename()
+        self.pwdfile2       = hlp.create_pwd_file(self.tmpfile2, passphrase2)
+
 
     # generate gpg keyfiles
     def generate(self):
@@ -38,12 +43,25 @@ class GenerateGPGKey:
         # options shorthand
         o = self.opts
 
-        msg.display("generating a new GPG key this may take a while")
+        msg.display("generating new set of GPG keys [{}]; this may take a while".format(self.opts.get('gpgkey_keyset')))
 
         # prepare the temp folder
         self.check_versions()
         self.create_gpg_conf()
         self.init_gnupg_dir()
+
+        # determine type of keyset to generate
+        if self.opts.get('gpgkey_keyset') == 'backup':
+            result = self.generate_backup()
+        else:
+            result = self.generate_regular()
+
+        # return
+        return result
+
+
+    # generate regular gpg key set
+    def generate_regular(self):
 
         # set empty result
         result = {}
@@ -51,53 +69,130 @@ class GenerateGPGKey:
         #
         # generate the master key
         #
-        self.generate_key('cert')
-        master_sec_info = self.get_key_info('secret', 'cert')
-        master_pub_info = self.get_key_info('public', 'cert')
-        master_fpr      = master_sec_info['master_sec_fingerprint']
+        self.generate_key('cert', pwdfile=self.pwdfile)
+        master_sec_info = self.get_key_info(keytype='secret', usage='cert', mapping='regular')
+        master_pub_info = self.get_key_info(keytype='public', usage='cert', mapping='regular')
+        master_fpr      = master_sec_info['master_cert_sec_fingerprint']
         result          = self.opts.merge(result, master_sec_info)
+        result          = self.opts.merge(result, master_pub_info)
 
         #
         # generate the sign subkey - provide the fingerprint of the master
         #
-        self.generate_key('sign', master_fpr)
-        sign_sec_info   = self.get_key_info('secret', 'sign', master_fpr)
-        sign_fpr        = sign_sec_info['sign_sec_fingerprint']
+        self.generate_key('sign', pwdfile=self.pwdfile, fpr=master_fpr)
+        sign_sec_info   = self.get_key_info(keytype='secret', usage='sign', mapping='regular', fpr=master_fpr)
+        sign_fpr        = sign_sec_info['subkey_sign_sec_fingerprint']
         result          = self.opts.merge(result, sign_sec_info)
 
         #
         # generate the encr subkey - provide the fingerprint of the master
         #
-        self.generate_key('encr', master_fpr)
-        encr_sec_info   = self.get_key_info('secret', 'encr', master_fpr)
-        encr_fpr        = encr_sec_info['encr_sec_fingerprint']
+        self.generate_key('encr', pwdfile=self.pwdfile, fpr=master_fpr)
+        encr_sec_info   = self.get_key_info(keytype='secret', usage='encr', mapping='regular', fpr=master_fpr)
+        encr_fpr        = encr_sec_info['subkey_encr_sec_fingerprint']
         result          = self.opts.merge(result, encr_sec_info)
 
         #
         # generate the auth subkey - provide the fingerprint of the master
         #
-        self.generate_key('auth', master_fpr)
-        auth_sec_info   = self.get_key_info('secret', 'auth', master_fpr)
-        auth_fpr        = auth_sec_info['auth_sec_fingerprint']
+        self.generate_key('auth', pwdfile=self.pwdfile, fpr=master_fpr)
+        auth_sec_info   = self.get_key_info(keytype='secret', usage='auth', mapping='regular', fpr=master_fpr)
+        auth_fpr        = auth_sec_info['subkey_auth_sec_fingerprint']
         result          = self.opts.merge(result, auth_sec_info)
 
         #
         # export the keys so they can be added to the result
         #
         msg.vvvv("exporting keys")
-        result['master_sec_key_armored'] = self.export_keys('sec', master_fpr)
-        result['master_pub_key_armored'] = self.export_keys('pub', master_fpr)
-        result['sign_sec_key_armored'] = self.export_keys('ssb', sign_fpr)
-        result['encr_sec_key_armored'] = self.export_keys('ssb', encr_fpr)
-        result['auth_sec_key_armored'] = self.export_keys('ssb', auth_fpr)
+        result['master_cert_sec_key_armored'] = self.export_keys('sec', master_fpr, self.pwdfile)
+        result['master_cert_pub_key_armored'] = self.export_keys('pub', master_fpr, self.pwdfile)
+        result['subkey_sign_sec_key_armored'] = self.export_keys('ssb', sign_fpr, self.pwdfile)
+        result['subkey_encr_sec_key_armored'] = self.export_keys('ssb', encr_fpr, self.pwdfile)
+        result['subkey_auth_sec_key_armored'] = self.export_keys('ssb', auth_fpr, self.pwdfile)
 
         #
         # add the remaining info from the class options
         #
         msg.vvvv("adding remaining information to result")
-        result['master_sec_keytype'] = self.opts.get('gpgkey_type')
-        result['master_sec_keyuid'] = self.opts.get('gpgkey_uid')
-        result['master_sec_password'] = self.passphrase
+        result['master_cert_sec_keytype'] = self.opts.get('gpgkey_type')
+        result['master_cert_sec_keyuid'] = self.opts.get('gpgkey_uid')
+        result['master_cert_sec_password'] = self.passphrase
+
+        # return
+        return result
+
+
+    # generate regular gpg key set
+    def generate_backup(self):
+
+        # set empty result
+        result = {}
+
+        #
+        # SIGN - generate the master key
+        #
+        self.generate_key('cert', pwdfile=self.pwdfile, uidprefix="backup_sign")
+        sign_master_sec_info    = self.get_key_info(keytype='secret', usage='cert', mapping='backup_sign')
+        sign_master_pub_info    = self.get_key_info(keytype='public', usage='cert', mapping='backup_sign')
+        sign_master_fpr         = sign_master_sec_info['sign_master_cert_sec_fingerprint']
+        result                  = self.opts.merge(result, sign_master_sec_info)
+        result                  = self.opts.merge(result, sign_master_pub_info)
+
+        #
+        # SIGN - generate the sign subkey - provide the fingerprint of the master
+        #
+        self.generate_key('sign', pwdfile=self.pwdfile, fpr=sign_master_fpr)
+        sign_sec_info           = self.get_key_info(keytype='secret', usage='sign', mapping='backup_sign', fpr=sign_master_fpr)
+        sign_fpr                = sign_sec_info['sign_subkey_sign_sec_fingerprint']
+        result                  = self.opts.merge(result, sign_sec_info)
+
+        #
+        # ENCR - generate the master key
+        #
+        self.generate_key('cert', pwdfile=self.pwdfile2, uidprefix="backup_encr")
+        encr_master_sec_info    = self.get_key_info(keytype='secret', usage='cert', mapping='backup_encr')
+        encr_master_pub_info    = self.get_key_info(keytype='public', usage='cert', mapping='backup_encr')
+        encr_master_fpr         = encr_master_sec_info['encr_master_cert_sec_fingerprint']
+        result                  = self.opts.merge(result, encr_master_sec_info)
+        result                  = self.opts.merge(result, encr_master_pub_info)
+
+        #
+        # ENCR - generate the encr subkey - provide the fingerprint of the master
+        #
+        self.generate_key('encr', pwdfile=self.pwdfile2, fpr=encr_master_fpr)
+        encr_sec_info           = self.get_key_info(keytype='secret', usage='encr', mapping='backup_encr', fpr=encr_master_fpr)
+        encr_fpr                = encr_sec_info['encr_subkey_encr_sec_fingerprint']
+        result                  = self.opts.merge(result, encr_sec_info)
+
+        #
+        # sign encryption key
+        # we should sign the encr master key, not the subkey
+        #
+        msg.vvvv("signing encrypt key with sign key")
+        self.sign_key(self.pwdfile, sign_with_key=sign_fpr, fpr_to_sign=encr_master_fpr)
+
+        #
+        # export the keys so they can be added to the result
+        #
+        msg.vvvv("exporting sign keys")
+        result['sign_master_cert_sec_key_armored']  = self.export_keys('sec', sign_master_fpr, self.pwdfile)
+        result['sign_master_cert_pub_key_armored']  = self.export_keys('pub', sign_master_fpr, self.pwdfile)
+        result['sign_subkey_sign_sec_key_armored']  = self.export_keys('ssb', sign_fpr, self.pwdfile)
+        msg.vvvv("exporting encr keys")
+        result['encr_master_cert_sec_key_armored']  = self.export_keys('sec', encr_master_fpr, self.pwdfile2)
+        result['encr_master_cert_pub_key_armored']  = self.export_keys('pub', encr_master_fpr, self.pwdfile2)
+        result['encr_subkey_encr_sec_key_armored']  = self.export_keys('ssb', encr_fpr, self.pwdfile2)
+
+        #
+        # add the remaining info from the class options
+        #
+        msg.vvvv("adding remaining information to result")
+        result['sign_master_cert_sec_keytype']      = self.opts.get('gpgkey_type')
+        result['sign_master_cert_sec_keyuid']       = self.opts.get('gpgkey_uid')
+        result['sign_master_cert_sec_password']     = self.passphrase
+        result['encr_master_cert_sec_keytype']      = self.opts.get('gpgkey_type')
+        result['encr_master_cert_sec_keyuid']       = self.opts.get('gpgkey_uid')
+        result['encr_master_cert_sec_password']     = self.passphrase2
 
         # return
         return result
@@ -177,19 +272,6 @@ class GenerateGPGKey:
         proc = Process("gpg", cmd, failonstderr=False).run()
 
 
-    # function to write password file
-    def create_pwd_file(self):
-
-        msg.vvv("creating password file")
-
-        # write password file
-        file    = "{}{}".format(self.opts.get_tmp_filename(),'.pwd')
-        hlp.write_tmp_file(file, self.passphrase)
-
-        # return full path to of password file
-        return file
-
-
     # get key curve for Ed25519 keys
     def get_key_curvebits(self, usage):
 
@@ -229,7 +311,7 @@ class GenerateGPGKey:
 
 
     # get cmd arguments
-    def get_generate_args(self, usage, fpr=None):
+    def get_generate_args(self, usage, pwdfile, fpr=None, uidprefix=None):
 
         # set quick argument
         quick = {
@@ -246,10 +328,14 @@ class GenerateGPGKey:
         else:
             uidfpr = self.opts.get('gpgkey_uid')
 
+            # if generating a backup keyset, always prepend the uid
+            if uidprefix is not None:
+                uidfpr = "[{}] {}".format(uidprefix, uidfpr)
+
         # set arguments
         args = ['--batch',
                 '--homedir={}'.format(self.opts.get_tmp_dir()),
-                '--passphrase-file={}'.format(self.pwdfile),
+                '--passphrase-file={}'.format(pwdfile),
                 '--pinentry-mode=loopback',
                 '--cert-digest-algo={}'.format(self.opts.get('gpgkey_digest')),
                 '--digest-algo={}'.format(self.opts.get('gpgkey_digest')),
@@ -287,12 +373,40 @@ class GenerateGPGKey:
                ]
 
 
+    # get signkey args
+    def get_signkey_args(self, pwdfile, sign_with_key, fpr_to_sign):
+
+        # arguments to sign keys
+        # the [names] option (see man gpg2 | grep -na10 quick\-sign\-key)
+        # is not required, as we're signing all subkeys
+        return ['--homedir={}'.format(self.opts.get_tmp_dir()),
+                '--default-key={}'.format(sign_with_key),
+                '--passphrase-file={}'.format(pwdfile),
+                '--pinentry-mode=loopback',
+                '--quick-sign-key',
+                '{}'.format(fpr_to_sign),
+               ]
+
+
     # generate key
-    def generate_key(self, usage, fpr=None):
+    def generate_key(self, usage, pwdfile, fpr=None, uidprefix=None):
 
         # create the command to generate a new master key
         cmd = [self.opts.get('gpgkey_bin')]
-        args = self.get_generate_args(usage, fpr)
+        args = self.get_generate_args(usage, pwdfile, fpr, uidprefix)
+        cmd += args
+
+        # run subprocess; catch the output but don't fail on stderr as gnupg outputs key creation details to stderr instead of stdout
+        proc = Process("gpg", cmd, failonstderr=False).run()
+
+        return True
+
+
+    def sign_key(self, pwdfile, sign_with_key, fpr_to_sign):
+
+        # create the command to sign the key
+        cmd = [self.opts.get('gpgkey_bin')]
+        args = self.get_signkey_args(pwdfile=pwdfile, sign_with_key=sign_with_key, fpr_to_sign=fpr_to_sign)
         cmd += args
 
         # run subprocess; catch the output but don't fail on stderr as gnupg outputs key creation details to stderr instead of stdout
@@ -303,7 +417,7 @@ class GenerateGPGKey:
 
     # export keys
     # unarmored keys are not exported; since they are binary the data might get scrambled
-    def export_keys(self, ltype, fpr):
+    def export_keys(self, ltype, fpr, pwdfile):
 
         # set keyfiles
         ascfile = "{}{}".format(self.opts.get_tmp_filename(),'.asc')
@@ -319,11 +433,12 @@ class GenerateGPGKey:
         # set base command
         cmd = [self.opts.get('gpgkey_bin')]
         args = ['--homedir={}'.format(self.opts.get_tmp_dir()),
-                '--passphrase-file={}'.format(self.pwdfile),
+                '--passphrase-file={}'.format(pwdfile),
                 '--pinentry-mode=loopback',
                 '--quiet',
                 '--armor',
                 '--export{}'.format(exp),
+                '{}'.format(fpr),
                 #'--output={}'.format(ascfile) - output to stdout instead
                ]
         cmd += args
@@ -336,7 +451,7 @@ class GenerateGPGKey:
 
 
     # fetch key information
-    def get_key_info(self, keytype, usage, fpr=None):
+    def get_key_info(self, keytype, usage, mapping, fpr=None):
 
         msg.vvvv("attempt to extract key info from generated keys [{}] with usage [{}]".format(keytype, usage))
 
@@ -583,36 +698,70 @@ class GenerateGPGKey:
 
         #
         # MAPPING
-        #
-        mapping = {
-            'cert_sec_fpr_userid'       : 'master_sec_fingerprint',
-            'cert_sec_curve_name'       : 'master_sec_keycurve',
-            'cert_sec_grp_userid'       : 'master_sec_keygrip',
-            'cert_sec_key_length'       : 'master_sec_keybits',
-            'cert_sec_creationdate'     : 'master_sec_creationdate',
-            'cert_sec_keyid'            : 'master_sec_keyid',
-            'cert_sec_expirationdate'   : 'master_sec_expirationdate',
-            'sign_ssb_fpr_userid'       : 'sign_sec_fingerprint',
-            'sign_ssb_curve_name'       : 'sign_sec_keycurve',
-            'sign_ssb_grp_userid'       : 'sign_sec_keygrip',
-            'sign_ssb_key_length'       : 'sign_sec_keybits',
-            'sign_ssb_creationdate'     : 'sign_sec_creationdate',
-            'sign_ssb_keyid'            : 'sign_sec_keyid',
-            'sign_ssb_expirationdate'   : 'sign_sec_expirationdate',
-            'encr_ssb_fpr_userid'       : 'encr_sec_fingerprint',
-            'encr_ssb_curve_name'       : 'encr_sec_keycurve',
-            'encr_ssb_grp_userid'       : 'encr_sec_keygrip',
-            'encr_ssb_key_length'       : 'encr_sec_keybits',
-            'encr_ssb_creationdate'     : 'encr_sec_creationdate',
-            'encr_ssb_keyid'            : 'encr_sec_keyid',
-            'encr_ssb_expirationdate'   : 'encr_sec_expirationdate',
-            'auth_ssb_fpr_userid'       : 'auth_sec_fingerprint',
-            'auth_ssb_curve_name'       : 'auth_sec_keycurve',
-            'auth_ssb_grp_userid'       : 'auth_sec_keygrip',
-            'auth_ssb_key_length'       : 'auth_sec_keybits',
-            'auth_ssb_creationdate'     : 'auth_sec_creationdate',
-            'auth_ssb_keyid'            : 'auth_sec_keyid',
-            'auth_ssb_expirationdate'   : 'auth_sec_expirationdate',
+        #ssb_fpr_userid  sec_fpr_userid master_cert_sec_fingerprint
+        keymap = {
+            'regular'   : {
+                'cert_sec_fpr_userid'       : 'master_cert_sec_fingerprint',
+                'cert_sec_curve_name'       : 'master_cert_sec_keycurve',
+                'cert_sec_grp_userid'       : 'master_cert_sec_keygrip',
+                'cert_sec_key_length'       : 'master_cert_sec_keybits',
+                'cert_sec_creationdate'     : 'master_cert_sec_creationdate',
+                'cert_sec_keyid'            : 'master_cert_sec_keyid',
+                'cert_sec_expirationdate'   : 'master_cert_sec_expirationdate',
+                'sign_ssb_fpr_userid'       : 'subkey_sign_sec_fingerprint',
+                'sign_ssb_curve_name'       : 'subkey_sign_sec_keycurve',
+                'sign_ssb_grp_userid'       : 'subkey_sign_sec_keygrip',
+                'sign_ssb_key_length'       : 'subkey_sign_sec_keybits',
+                'sign_ssb_creationdate'     : 'subkey_sign_sec_creationdate',
+                'sign_ssb_keyid'            : 'subkey_sign_sec_keyid',
+                'sign_ssb_expirationdate'   : 'subkey_sign_sec_expirationdate',
+                'encr_ssb_fpr_userid'       : 'subkey_encr_sec_fingerprint',
+                'encr_ssb_curve_name'       : 'subkey_encr_sec_keycurve',
+                'encr_ssb_grp_userid'       : 'subkey_encr_sec_keygrip',
+                'encr_ssb_key_length'       : 'subkey_encr_sec_keybits',
+                'encr_ssb_creationdate'     : 'subkey_encr_sec_creationdate',
+                'encr_ssb_keyid'            : 'subkey_encr_sec_keyid',
+                'encr_ssb_expirationdate'   : 'subkey_encr_sec_expirationdate',
+                'auth_ssb_fpr_userid'       : 'subkey_auth_sec_fingerprint',
+                'auth_ssb_curve_name'       : 'subkey_auth_sec_keycurve',
+                'auth_ssb_grp_userid'       : 'subkey_auth_sec_keygrip',
+                'auth_ssb_key_length'       : 'subkey_auth_sec_keybits',
+                'auth_ssb_creationdate'     : 'subkey_auth_sec_creationdate',
+                'auth_ssb_keyid'            : 'subkey_auth_sec_keyid',
+                'auth_ssb_expirationdate'   : 'subkey_auth_sec_expirationdate',
+            },
+            'backup_sign'   : {
+                'cert_sec_fpr_userid'       : 'sign_master_cert_sec_fingerprint',
+                'cert_sec_curve_name'       : 'sign_master_cert_sec_keycurve',
+                'cert_sec_grp_userid'       : 'sign_master_cert_sec_keygrip',
+                'cert_sec_key_length'       : 'sign_master_cert_sec_keybits',
+                'cert_sec_creationdate'     : 'sign_master_cert_sec_creationdate',
+                'cert_sec_keyid'            : 'sign_master_cert_sec_keyid',
+                'cert_sec_expirationdate'   : 'sign_master_cert_sec_expirationdate',
+                'sign_ssb_fpr_userid'       : 'sign_subkey_sign_sec_fingerprint',
+                'sign_ssb_curve_name'       : 'sign_subkey_sign_sec_keycurve',
+                'sign_ssb_grp_userid'       : 'sign_subkey_sign_sec_keygrip',
+                'sign_ssb_key_length'       : 'sign_subkey_sign_sec_keybits',
+                'sign_ssb_creationdate'     : 'sign_subkey_sign_sec_creationdate',
+                'sign_ssb_keyid'            : 'sign_subkey_sign_sec_keyid',
+                'sign_ssb_expirationdate'   : 'sign_subkey_sign_sec_expirationdate',
+            },
+            'backup_encr'   : {
+                'cert_sec_fpr_userid'       : 'encr_master_cert_sec_fingerprint',
+                'cert_sec_curve_name'       : 'encr_master_cert_sec_keycurve',
+                'cert_sec_grp_userid'       : 'encr_master_cert_sec_keygrip',
+                'cert_sec_key_length'       : 'encr_master_cert_sec_keybits',
+                'cert_sec_creationdate'     : 'encr_master_cert_sec_creationdate',
+                'cert_sec_keyid'            : 'encr_master_cert_sec_keyid',
+                'cert_sec_expirationdate'   : 'encr_master_cert_sec_expirationdate',
+                'encr_ssb_fpr_userid'       : 'encr_subkey_encr_sec_fingerprint',
+                'encr_ssb_curve_name'       : 'encr_subkey_encr_sec_keycurve',
+                'encr_ssb_grp_userid'       : 'encr_subkey_encr_sec_keygrip',
+                'encr_ssb_key_length'       : 'encr_subkey_encr_sec_keybits',
+                'encr_ssb_creationdate'     : 'encr_subkey_encr_sec_creationdate',
+                'encr_ssb_keyid'            : 'encr_subkey_encr_sec_keyid',
+                'encr_ssb_expirationdate'   : 'encr_subkey_encr_sec_expirationdate',
+            },
         }
 
         #
@@ -620,23 +769,15 @@ class GenerateGPGKey:
         #
         result = {}
         resultiterator = tmpresult.copy()
+        km = keymap.get(mapping)
         for k,v in resultiterator.items():
             
-            #print("trying to rename {}".format(k))
             # only for keys which exist in the mapping dict
-            if k in mapping:
-                #print("  {} is in mapping, renaming".format(k))
-                nk = mapping.get(k)
+            if k in km:
+                nk = km.get(k)
                 result[nk] = tmpresult.pop(k)
 
         #
         # return results
         #
         return result
-
-
-
-
-
-
-

@@ -6,6 +6,7 @@ from ansible.utils.display import Display
 from distutils.spawn import find_executable
 from time import gmtime, strftime
 import os
+import re
 
 #
 # display
@@ -47,6 +48,8 @@ class AhvlMsg:
         msg = "\n\nAHVL OPTIONS ERROR:\n{}\n\nOPTIONS:\nkargs: {}\nkwargs: {}".format(msg, kargs, kwargs)
         raise AnsibleError(msg)
 
+
+msg = AhvlMsg()
 
 #
 # AhvlHelper
@@ -164,3 +167,15 @@ class AhvlHelper:
 
         # return
         return f
+
+    # function to write password file
+    def create_pwd_file(self, file, passphrase):
+
+        msg.vvv("creating password file")
+
+        # write password file
+        file    = "{}{}".format(file,'.pwd')
+        self.write_tmp_file(file, passphrase)
+
+        # return full path to of password file
+        return file

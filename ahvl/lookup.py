@@ -8,9 +8,13 @@ from ahvl.options.lookup.password import OptionsLookupPassword
 from ahvl.options.lookup.sshkey import OptionsLookupSSHKey
 from ahvl.options.lookup.sshhostkey import OptionsLookupSSHHostKey
 from ahvl.options.lookup.gpgkey import OptionsLookupGPGKey
+from ahvl.options.lookup.credential import OptionsLookupCredential
 from ahvl.options.hashivault import OptionsHashiVault
+
 from ahvl.generate.salt import GenerateSalt
 from ahvl.generate.password import GeneratePassword
+from ahvl.generate.sshkey import GenerateSSHKey
+from ahvl.generate.sshhostkey import GenerateSSHHostKey
 from ahvl.generate.gpgkey import GenerateGPGKey
 
 #
@@ -20,7 +24,7 @@ msg = AhvlMsg()
 hlp = AhvlHelper()
 
 #
-# HvLookup
+# AhvlLookup
 #
 class AhvlLookup(LookupBase):
 
@@ -62,6 +66,7 @@ class AhvlLookup(LookupBase):
                     "OptionsLookupSSHKey",
                     "OptionsLookupSSHHostKey",
                     "OptionsLookupGPGKey",
+                    "OptionsLookupCredential",
                     ]
 
         # sanity checkjohndoe34
@@ -88,7 +93,7 @@ class AhvlLookup(LookupBase):
 
         # remove dir if it still exists;
         # it may have been deleted by a generate method already
-        #self.opts.delete_tmp_dir()
+        self.opts.delete_tmp_dir()
 
         # unset variables
         del self.opts
@@ -114,104 +119,15 @@ class AhvlLookup(LookupBase):
         secret = func(secret, options)
 
         # sanity check
-        if not secret:
+        # explicitly checking for None instead of an empty value prevents error when the requested value is empty
+        # this may be the case with, for example, the expiration date of a GPG key
+        if secret is None:
             self.cleanup()
             msg.fail("the 'in' [{}] could not be found at path [{}]".format(options.get('in'), options.get('path')))
 
         # cleanup and return
         self.cleanup()
         return [secret]
-
-    #
-    # general method to find secret
-    #
-#    def return_secret_old(self, secret_type, options):
-#
-#        # find the correct secret
-#        funcname = "return_{}".format(secret_type)
-#        msg.vv("searching secret using function [{}]".format(funcname))
-#        func = getattr(self, funcname)
-#        secret = func(options)
-#
-#        # cleanup
-#        self.cleanup()
-#
-#        # return secret
-#        result = []
-#        result.append(secret)
-#        return result
-
-    #
-    # return password
-    #
-#    def return_password(self, options):
-#
-#        # determine if we need to generate a secret or not
-#        if options.get('ret') == "onetime":
-#            secret = True
-#        else:
-#            secret = False
-#
-#        # set value if it hasn't been set
-#        if not secret:
-#            secret = self.find_password(options)
-#
-#        # sanity check
-#        if not secret:
-#            msg.fail("the value for [{}] could not be found for path [{}]".format(options.get('key'), options.get('path')))
-#
-#        # get the correct out according to the config value
-#        funcname = "return_{}".format(options.get('ret'))
-#        msg.vv("fetching return function [{}]".format(options.get('ret')))
-#        func = getattr(self, funcname)
-#        secret = func(secret)
-#        return secret
-
-#    #
-#    # return sshkey
-#    #
-#    def return_sshkey(self, options):
-#
-#        # find value
-#        secret = self.find_sshkey(options)
-#
-#        # sanity check
-#        if not secret:
-#            msg.fail("the value for [{}] could not be found for path [{}]".format(options.get('key'), options.get('path')))
-#
-#        # return
-#        return secret
-
-#    #
-#    # return sshhostkey
-#    #
-#    def return_sshhostkey(self, options):
-#
-#        # find value
-#        secret = self.find_sshhostkey(options)
-#
-#        # sanity check
-#        if not secret:
-#            msg.fail("the value for [{}] could not be found for path [{}]".format(options.get('fullkey'), options.get('path')))
-#
-#        # return
-#        return secret
-
-#    #
-#    # return gpgkey
-#    #
-#    def return_gpgkey(self, options):
-#
-#        # find value
-#        secret = self.find_gpgkey(options)
-#
-#        # sanity check
-#        if not secret:
-#            msg.fail("the value for 'in' [{}] could not be found for path [{}]".format(options.get('in'), options.get('path')))
-#
-#        # return
-#        return secret
-
 
     #
     # return secret with hash function
@@ -246,6 +162,22 @@ class AhvlLookup(LookupBase):
     def return_postgresmd5(self, secret, options):
         from passlib.hash import postgres_md5
         return postgres_md5.hash(secret, user=options.get('in'))
+
+    def return_pbkdf2sha256(self, secret, options):
+        from passlib.hash import pbkdf2_sha256
+        return pbkdf2_sha256.hash(secret, salt=bytes(self.find_salt(options)))
+
+    def return_pbkdf2sha512(self, secret, options):
+        from passlib.hash import pbkdf2_sha512
+        return pbkdf2_sha512.hash(secret, salt=bytes(self.find_salt(options)), rounds=58000)
+
+    def return_argon2(self, secret, options):
+        from passlib.hash import argon2
+        return argon2.using(salt=bytes(self.find_salt(options)), rounds=32).hash(secret)
+
+    def return_grubpbkdf2sha512(self, secret, options):
+        from passlib.hash import grub_pbkdf2_sha512
+        return grub_pbkdf2_sha512.hash(secret, salt=bytes(self.find_salt(options)), rounds=38000)
 
     #
     # find salt
@@ -317,40 +249,31 @@ class AhvlLookup(LookupBase):
 
         # attempt to find secret
         if not options.get('renew'):
-            msg.vv("searching vault for [{}] in [{}]".format(options.get('key'), options.get('path')))
-            secret = self.vault.get(options.get('path'), options.get('key'))
-            
-            # sanity check
-            # make sure the default sshkey has not been generated yet in the odd event where you
-            # requested a key variant which was not initially generated for whatever reason
-            if secret is None:
-                self.vv("key not found, check if base key [private] exists")
-                priv = self.vault.get(options.get('path'), 'private')
-
-                if priv is not None:
-                    # if the key exists, fail due to existing key
-                    self.error("It seems you have requested a key type [{}] which was not generated originally.\n"
-                               "This could be the result of enabling options such as [sshkey_putty_enabled] or [sshkey_pkcs8_enabled],\n"
-                               "or simply because you have requested a key type which could not be generated from the original keyfile.\n"
-                               "For example, PKCS8 keys cannot be generated for Ed25519 keys".format(options.get('key')))
+            msg.vv("searching sshkey in vault for [{}] in [{}]".format(options.get('in'), options.get('path')))
+            secret = self.vault.get(options.get('path'), options.get('in'))
 
         else:
-            msg.vv("forcing new sshkey generation for [{}] in [{}]".format(options.get('key'), options.get('path')))
+            msg.vv("forcing new sshkey generation for [{}] in [{}]".format(options.get('in'), options.get('path')))
             secret = None
 
         # check for empty secret
-        if secret is None:
+        if secret is None and options.get('autogenerate'):
 
-            self.vv("key [{}] not found; generating".format(options.get('key')))
+            msg.vv("sshkey [{}] not found; generating".format(options.get('in')))
 
-            #pwdgen      = GeneratePassword(self.variables, self, **self.kwargs)
-            #pwd         = pwdgen.generate()
-            pwd         = self.find_password(options)
-            secretgen   = GenerateSSHKey(self.variables, self, key_password=pwd, **self.kwargs)
+            # save original key
+            origin = options.get('in')
+
+            # get master password
+            options.set('in', 'password')
+            pwd_master = self.find_password(options)
+
+            # reset key
+            options.set('in', origin)
+
+            # generate gpgkey
+            secretgen   = GenerateSSHKey(self, passphrase=pwd_master)
             secrets     = secretgen.generate()
-
-            # add generated password to secrets
-            secrets['password'] = pwd
 
             # save generated secrets
             self.vault.setdict(
@@ -359,14 +282,20 @@ class AhvlLookup(LookupBase):
             )
 
             # get requested secret
-            if options.get('key') not in secrets:
-                self.error("the requested key [{}] could not be found after generating the sshkey; "
-                           "have you requested an invalid combination?".format(options.get('key')))
+            if options.get('in') not in secrets:
+                msg.fail("the requested 'in' [{}] could not be found after generating the sshkey; "
+                           "have you requested an invalid combination?".format(options.get('in')))
 
             # set proper return value
-            secret = secrets[options.get('key')]
+            secret = secrets[options.get('in')]
+
+        # secret not found, but autogenerate is disabled
+        elif secret is None:
+            msg.fail("the requested 'in' [{}] could not be found and autogenerate is disabled; "
+                           "please double check your settings and try again".format(options.get('in')))
 
         return secret
+
 
     #
     # find sshhostkey
@@ -375,19 +304,20 @@ class AhvlLookup(LookupBase):
 
         # attempt to find secret
         if not options.get('renew'):
-            self.vv("searching vault for [{}] in [{}]".format(options.get('fullkey'), options.get('path')))
-            secret = self.vault.get(options.get('path'), options.get('fullkey'))
-            
+            msg.vv("searching sshhostkey in vault for [{}] in [{}]".format(options.get('in'), options.get('path')))
+            secret = self.vault.get(options.get('path'), options.get('in'))
+
         else:
-            self.vv("forcing new sshhostkey generation for [{}] in [{}]".format(options.get('fullkey'), options.get('path')))
+            msg.vv("forcing new sshhostkey generation for [{}] in [{}]".format(options.get('in'), options.get('path')))
             secret = None
 
         # check for empty secret
-        if secret is None:
+        if secret is None and options.get('autogenerate'):
 
-            self.vv("hostkey [{}] not found; generating".format(options.get('fullkey')))
+            msg.vv("sshhostkey [{}] not found; generating".format(options.get('in')))
 
-            secretgen   = GenerateSSHHostKey(self.variables, self, **self.kwargs)
+            # generate gpgkey
+            secretgen   = GenerateSSHHostKey(self)
             secrets     = secretgen.generate()
 
             # save generated secrets
@@ -397,14 +327,20 @@ class AhvlLookup(LookupBase):
             )
 
             # get requested secret
-            if options.get('fullkey') not in secrets:
-                self.error("the requested key [{}] could not be found after generating the sshhostkey; "
-                           "have you requested an invalid combination?".format(options.get('fullkey')))
+            if options.get('in') not in secrets:
+                msg.fail("the requested 'in' [{}] could not be found after generating the sshhostkey; "
+                           "have you requested an invalid combination?".format(options.get('in')))
 
             # set proper return value
-            secret = secrets[options.get('fullkey')]
+            secret = secrets[options.get('in')]
+
+        # secret not found, but autogenerate is disabled
+        elif secret is None:
+            msg.fail("the requested 'in' [{}] could not be found and autogenerate is disabled; "
+                           "please double check your settings and try again".format(options.get('in')))
 
         return secret
+
 
     #
     # find gpgkey
@@ -417,7 +353,7 @@ class AhvlLookup(LookupBase):
             secret = self.vault.get(options.get('path'), options.get('in'))
 
         else:
-            msg.vv("forcing new gpgkey generation for [{}] in [{}]".format(options.get('in'), options.get('full')))
+            msg.vv("forcing new gpgkey generation for [{}] in [{}]".format(options.get('in'), options.get('path')))
             secret = None
 
         # check for empty secret
@@ -429,14 +365,21 @@ class AhvlLookup(LookupBase):
             origin = options.get('in')
 
             # get master password
-            options.set('in', "master_sec_password")
+            if options.get('gpgkey_keyset') == 'backup':
+                options.set('in', 'encr_master_cert_sec_password')
+                pwd_master2 = self.find_password(options)
+                options.set('in', 'sign_master_cert_sec_password')
+            else:
+                options.set('in', 'master_cert_sec_password')
+                pwd_master2 = ''
+
             pwd_master = self.find_password(options)
 
             # reset key
             options.set('in', origin)
 
             # generate gpgkey
-            secretgen   = GenerateGPGKey(self, passphrase=pwd_master)
+            secretgen   = GenerateGPGKey(self, passphrase=pwd_master, passphrase2=pwd_master2)
             secrets     = secretgen.generate()
 
             # save generated secrets
@@ -460,3 +403,20 @@ class AhvlLookup(LookupBase):
 
         return secret
 
+
+    #
+    # find password
+    #
+    def find_credential(self, options):
+
+        # attempt to find secret
+        msg.vv("searching credential in vault for [{}] in [{}]".format(options.get('in'), options.get('path')))
+        secret = self.vault.get(options.get('path'), options.get('in'))
+
+        # check for empty secret
+        if secret is None:
+
+            # credentials are not automatically generated
+            msg.fail("the requested credential [{}] could not be found at [{}]; auto generating credentials is not possible.".format(options.get('in'), options.get('path')))
+
+        return secret

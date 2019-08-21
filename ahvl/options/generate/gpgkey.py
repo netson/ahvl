@@ -63,6 +63,7 @@ class OptionsGenerateGPGKey(OptionsBase):
             'gpgkey_bits'           : '4096',                   # key length; only used by RSA keys; will be added to the gpgkey_algo variable for RSA keys
             'gpgkey_type'           : 'ed25519',                # main key type to use for all 4 keys (master + 3 subkeys); supported are rsa|ed25519
             'gpgkey_bin'            : None,                     # full path to gpg binary
+            'gpgkey_keyset'         : 'regular',                # set of keys to generate; regular or backup (i.e. for duplicity)
         }
 
 
@@ -127,6 +128,7 @@ class OptionsGenerateGPGKey(OptionsBase):
                 'gpgkey_s2k_count',
                 'gpgkey_expirationdate',
                 'gpgkey_type',
+                'gpgkey_keyset',
                ]
 
 

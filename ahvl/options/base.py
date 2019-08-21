@@ -96,11 +96,11 @@ class OptionsBase:
 
             # check if options have been set as playbook variables
             elif varopt in self.lookup_plugin.variables and self.lookup_plugin.variables[varopt] is not None:
-                self.set(opt, variables[varopt])
+                self.set(opt, self.lookup_plugin.variables[varopt])
 
             # check if options have been set as nested playbook variables
             elif self.prefix in self.lookup_plugin.variables and self.lookup_plugin.variables[self.prefix] is not None and opt in self.lookup_plugin.variables[self.prefix]:
-                self.set(opt, variables[self.prefix][opt])
+                self.set(opt, self.lookup_plugin.variables[self.prefix][opt])
 
             # check if connection options have been set using ansible-doc
             # this 'prefix' is different than the self.prefix, as this is about the option name itself regardless of prefix
@@ -170,8 +170,8 @@ class OptionsBase:
 
         # check for valid out value
         self.pi("validate_out")
-        allowed_out = ["plaintext", "hexsha256", "hexsha512", "sha256crypt",
-                       "sha512crypt", "phpass", "mysql41", "postgresmd5"]
+        allowed_out = ["plaintext", "hexsha256", "hexsha512", "sha256crypt", "sha512crypt", "grubpbkdf2sha512",
+                       "phpass", "mysql41", "postgresmd5", "pbkdf2sha256", "pbkdf2sha512", "argon2"]
 
         if 'out' in self.options.keys() and self.options['out'] not in allowed_out:
             msg.fail("option out has value [{}]; expected one of {}".format(self.options['out'], allowed_out), **self.options)
@@ -227,7 +227,7 @@ class OptionsBase:
             return path
 
         # define characters to be removed
-        rem = ['(',')','<','>']
+        rem = ['(',')','<','>','[',']']
         for r in rem: path = path.replace(r, "")
 
         rep = ['.',' ']

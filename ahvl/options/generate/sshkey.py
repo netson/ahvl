@@ -2,75 +2,131 @@
 # import modules
 #
 from ahvl.options.base import OptionsBase
+from ahvl.helper import AhvlMsg, AhvlHelper
+
+#
+# helper/message
+#
+msg = AhvlMsg()
+hlp = AhvlHelper()
 
 #
 # OptionsGenerateSSHKey
 #
 class OptionsGenerateSSHKey(OptionsBase):
 
-    def prefix(self):
-        self.prefix = "ahvl_generate_sshkey"
+    # set option prefix
+    def get_prefix(self):
 
-    def required(self):
+        # return option prefix
+        return "ahvl_generate_sshkey"
 
-        # return list of required options
-        return [
-            'key_type',
-            'key_username',
-            'key_password',
-            'ahvl_tmppath',
-        ]
 
-    def defaults(self):
+    # set path
+    # useable variables:
+    # - {find}
+    # - {hostname}
+    def get_path(self):
 
-        # set default option values
-        options = {
-            'key_type'       : "ed25519",                        # type of ssh key to generate
-            'key_bits'       : "4096",                           # number of bits for ssh key
-            'key_username'   : None,                             # ssh key username
-            'key_password'   : None,                             # ssh key password
-            'key_comment'    : None,                             # sshkey comment
-            'bin_keygen'     : self.find_binary("ssh-keygen"),   # full path to ssh-keygen binary
-            'bin_openssl'    : self.find_binary("openssl"),      # full path to puttygen binary, for pkcs8 key format
-            'bin_puttygen'   : self.find_binary("puttygen"),     # full path to puttygen binary
-            'pkcs8_enabled'  : False,                            # use openssl to convert keys to pkcs8 compatible keys
-            'putty_enabled'  : False,                            # use puttygen to convert keys to putty/sshcom compatible keys
+        # return basepath
+        return None
+
+
+    # set default options
+    def get_defaults(self):
+
+        # set default option values - dict
+        return {
+            'sshkey_type'           : "ed25519",                        # type of ssh key to generate
+            'sshkey_bits'           : "4096",                           # number of bits for ssh key
+            'sshkey_username'       : None,                             # ssh key username
+            'sshkey_comment'        : None,                             # sshkey comment
+            'sshkey_bin_keygen'     : None,                             # full path to ssh-keygen binary
+            'sshkey_bin_openssl'    : None,                             # full path to puttygen binary, for pkcs8 key format
+            'sshkey_bin_puttygen'   : None,                             # full path to puttygen binary
+            'sshkey_pkcs8_enabled'  : False,                            # use openssl to convert keys to pkcs8 compatible keys
+            'sshkey_putty_enabled'  : False,                            # use puttygen to convert keys to putty/sshcom compatible keys
         }
 
-        # return
-        return options
+
+    # calculate any remaining options
+    def get_appended(self):
+
+        # set shorthand
+        o = self.options
+
+        # set options to append
+        find                = o['find']
+        sshkey_comment      = o['sshkey_comment']
+        sshkey_bin_keygen   = o['sshkey_bin_keygen']
+        sshkey_bin_openssl  = o['sshkey_bin_openssl']
+        sshkey_bin_puttygen = o['sshkey_bin_puttygen']
+        sshkey_username     = o['sshkey_username']
+
+        # set username/find
+        if hlp.isempty(find):
+            find            = sshkey_username
+        if hlp.isempty(sshkey_username):
+            sshkey_username = find
+
+        # set comment
+        if hlp.isempty(sshkey_comment):
+            sshkey_comment = sshkey_username
+
+        # determine binaries
+        if hlp.isempty(sshkey_bin_keygen):
+            sshkey_bin_keygen  = hlp.find_binary('ssh-keygen')
+        if hlp.isempty(sshkey_bin_openssl) and o['sshkey_pkcs8_enabled']:
+            sshkey_bin_openssl  = hlp.find_binary('openssl')
+        if hlp.isempty(sshkey_bin_puttygen) and o['sshkey_putty_enabled']:
+            sshkey_bin_puttygen  = hlp.find_binary('puttygen')
+
+        # return list of overide options or calculated options
+        return {
+            'find'                  : find,
+            'sshkey_comment'        : sshkey_comment,
+            'sshkey_bin_keygen'     : sshkey_bin_keygen,
+            'sshkey_bin_openssl'    : sshkey_bin_openssl,
+            'sshkey_bin_puttygen'   : sshkey_bin_puttygen,
+            'sshkey_username'       : sshkey_username,
+        }
+
+
+    # set required options
+    def get_required(self):
+
+        # return required options - list
+        return ['sshkey_type',
+                'sshkey_bits',
+                'sshkey_username',
+                'sshkey_bin_keygen',
+               ]
+
 
     def validate(self):
 
-        # write shorthand
+        # set shorthand
         o = self.options
 
         #
-        # set allowed key types
-        # rsa1, dsa and ecdsa are explicitly not supported
+        # set accepted values
         #
-        allowed = ["ed25519", "rsa"]
-
-        #
-        # set comment
-        #
-        if o['key_comment'] is None:
-            self.set('key_comment', self.get('key_username'))
+        allowed_type = ["ed25519", "rsa"]
 
         #
         # sanity checks
         #
-        if o['key_type'] not in allowed:
-            self.error("invalid sshkey type specified; recieved [{}] but expected on of {}".format(o['key_type'], allowed))
+        if o['sshkey_type'] not in allowed_type:
+            msg.fail("value for [sshkey_type] parameter is invalid; [{}] given, but expected one of {}".format(o['sshkey_type'], allowed_type))
 
         # check ssh keytype and bits combo
-        if (o['key_type'] == "rsa" and int(o['key_bits']) < 2048):
-            self.error("sshkey of type [{}] cannot have less than [2048] bits; [{}] given".format(o['key_type'], o['key_bits']))
+        if (o['sshkey_type'] == "rsa" and int(o['sshkey_bits']) < 2048):
+            msg.fail("sshkey of type [{}] cannot have less than [2048] bits; [{}] given".format(o['sshkey_type'], o['sshkey_bits']))
 
         # check binaries for openssl
-        if (o['pkcs8_enabled'] and not (self.isfile(o['bin_openssl']) and self.isexecutablefile(o['bin_openssl']))):
-            self.error("pkcs8 keytypes are enabled, but the openssl binary [{}] could not be found or is not executable".format(o['bin_openssl']))
+        if (o['sshkey_pkcs8_enabled'] and not (hlp.isfile(o['sshkey_bin_openssl']) and hlp.isexecutablefile(o['sshkey_bin_openssl']))):
+            msg.fail("pkcs8 keytypes are enabled, but the openssl binary [{}] could not be found or is not executable".format(o['sshkey_bin_openssl']))
 
         # check binaries for puttygen
-        if (o['putty_enabled'] and not (self.isfile(o['bin_puttygen']) and self.isexecutablefile(o['bin_puttygen']))):
-            self.error("putty keytypes are enabled, but the puttygen binary [{}] could not be found or is not executable".format(o['bin_puttygen']))
+        if (o['sshkey_putty_enabled'] and not (hlp.isfile(o['sshkey_bin_puttygen']) and hlp.isexecutablefile(o['sshkey_bin_puttygen']))):
+            msg.fail("putty keytypes are enabled, but the puttygen binary [{}] could not be found or is not executable".format(o['sshkey_bin_puttygen']))

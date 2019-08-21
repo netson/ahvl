@@ -2,60 +2,43 @@
 # import modules
 #
 from ahvl.options.generate.sshkey import OptionsGenerateSSHKey
+from ahvl.helper import AhvlMsg, AhvlHelper
 from ahvl.process import Process
-from ansible.utils.display import Display
+from packaging import version
 import re
-import os
 
 #
-# ansible display
+# helper/message
 #
-display = Display()
+msg = AhvlMsg()
+hlp = AhvlHelper()
 
 #
 # GenerateSSHKey
 #
 class GenerateSSHKey:
 
-    def __init__(self, variables, lookup_plugin=None, **kwargs):
+    def __init__(self, lookup_plugin, passphrase):
 
-        #
-        # options
-        #
-        self.opts = OptionsGenerateSSHKey(variables, lookup_plugin, **kwargs)
+        # set lookup plugin
+        self.lookup_plugin  = lookup_plugin
+        self.variables      = lookup_plugin.variables
+        self.kwargs         = lookup_plugin.kwargs
+        self.passphrase     = passphrase
 
-    # function to generate sshkeys
-    def generate(self):
+        # set options
+        self.opts = OptionsGenerateSSHKey(lookup_plugin)
 
-        # get common info for keys
-        username = self.opts.get('key_username')
-        password = self.opts.get('key_password')
-        tempfile = self.opts.get_tmp_filename()
+        # create temp file
+        self.tmpfile        = self.opts.get_tmp_filename()
 
-        # SUPPORTED KEYTYPES
-        # note that the default key can by any of the supported keytypes: rsa, dsa, ecdsa, ed25519
-        # the default key determines which other keytypes are possible
-        # these other keytypes are always generated; maybe this will be an improvement in the future
-        # where a config setting allows you to select which (other) keytypes you wish to generate
-        # so as to increase performance and only run these processes when requested
-        # +=======================================+
-        # | DESC      :   PRI | PUB | FIP | # | X |
-        # +=======================================+
-        # | default   :    1  |  1  |  6  | 8 | A |
-        # | pkcs8     :    1  |  1  |     | 2 | B |
-        # | openssh   :    1  |     |     | 1 | C |
-        # | putty     :    1  |     |  1  | 2 | D |
-        # | sshcom    :    1  |     |     | 1 | E |
-        # | rfc4716   :       |  1  |     | 1 | F |
-        # | pem       :       |  1  |     | 1 | G |
-        # +=======================================+
-        # TOTAL                            16
-
-        # set list of keys to generate
-        gen         = [ "default", "rfc4716" ] # openssh should be run last, because it modifies the orignal key file
+        # create password file - not used by openssl
+        # check comments in gen_pkcs8() method for more info
+        self.pwdfile        = hlp.create_pwd_file(self.tmpfile, passphrase)
 
         # set a bunch of filenames for all different private/public keytypes
-        filenames   = {
+        self.filenames   = {
+            "password"                  : "{}.pwd",
             "private"                   : "{}", # A
             "private_pkcs8"             : "{}.pkcs8", # B
             "private_openssh"           : "{}.openssh", # C
@@ -74,30 +57,63 @@ class GenerateSSHKey:
             "fingerprint_putty"         : "{}.pub.fingerprint.putty", # D
         }
 
+
+    # function to generate sshkeys
+    def generate(self):
+
+        # options shorthand
+        o = self.opts.getall()
+
+        msg.display("generating new SSH key; this may take a while")
+
+        # prepare the temp folder
+        self.check_versions()
+
+        #
+        # SUPPORTED KEYTYPES
+        # note that the default key can by any of the supported keytypes: rsa, ed25519
+        # the default key determines which other keytypes are possible
+        # these other keytypes are always generated; maybe this will be an improvement in the future
+        # where a config setting allows you to select which (other) keytypes you wish to generate
+        # so as to increase performance and only run these processes when requested
+        # +=======================================+
+        # | DESC      :   PRI | PUB | FIP | # | X |
+        # +=======================================+
+        # | default   :    1  |  1  |  6  | 8 | A |
+        # | pkcs8     :    1  |  1  |     | 2 | B |
+        # | openssh   :    1  |     |     | 1 | C |
+        # | putty     :    1  |     |  1  | 2 | D |
+        # | sshcom    :    1  |     |     | 1 | E |
+        # | rfc4716   :       |  1  |     | 1 | F |
+        # | pem       :       |  1  |     | 1 | G |
+        # +=======================================+
+        # TOTAL                            16
+        #
+
+        # set list of keytypes to generate
+        # openssh should be run last, because it modifies the orignal key file, which is why it is not in the list yet
+        gen         = [ "default", "rfc4716" ]
+
         # check if pem format can be created
-        if self.opts.get('key_type') != "ed25519":
+        if o['sshkey_type'] != "ed25519":
             gen.append("pem")
 
         # check if openssl/pkcs8 key can be created
-        if self.opts.get('pkcs8_enabled') and self.opts.get('key_type') != "ed25519":
+        if o['sshkey_pkcs8_enabled'] and o['sshkey_type'] != "ed25519":
             gen.append("pkcs8")
 
         # check if putty/sshcom keys can be created
-        if self.opts.get('putty_enabled'):
-
-            # putty version check
-            putty_version = self.putty_get_version()
-            if float(putty_version) < 0.71 and self.opts.get('key_type') == "ed25519":
-                display.display("skipping putty key type while ed25519 support wasn't added to putty until version 0.71; running version [{}]".format(putty_version))
-            else:
-                gen.append("putty")
+        if o['sshkey_putty_enabled']:
+            gen.append("putty")
 
             # check if sshcom keys can be created
-            if self.opts.get('key_type') != "ed25519":
+            if o['sshkey_type'] != "ed25519":
                 gen.append("sshcom")
 
-        # generate all available types
+        # set empty result set
         result = {}
+        
+        # generate all available types
         for g in gen:
 
             # get generator name
@@ -105,40 +121,37 @@ class GenerateSSHKey:
             f = getattr(self, gname)
 
             # directly merge results into result dict
-            result = self.opts.merge(result, f(username, password, tempfile, filenames))
+            result = self.opts.merge(result, f())
 
         # always run openssh at the end because it changes the original keyfile
-        result = self.opts.merge(result, self.gen_openssh(username, password, tempfile, filenames))
-
-        # delete temp files
-        filename = "ssh_{}_{}".format(self.opts.hostname.replace(".", "_"), username.replace("@", "_at_"))
-        self.cleanup(tempfile, filename, result, filenames)
+        result = self.opts.merge(result, self.gen_openssh())
 
         # add key type and bits to result for future reference
-        result['private_keytype'] = self.opts.get('key_type')
-        if self.opts.get('key_type') == 'ed25519':
+        result['private_keytype'] = o['sshkey_type']
+        result['password'] = self.passphrase
+        if o['sshkey_type'] == 'ed25519':
             result['private_keybits'] = '256'
         else:
-            result['private_keybits'] = self.opts.get('key_bits')
+            result['private_keybits'] = o['sshkey_bits']
 
         # return
         return result
 
     # generate default keyfiles
-    def gen_default(self, username, password, tempfile, filenames):
+    def gen_default(self):
 
         # set filenames
-        file_key    = filenames["private"].format(tempfile)
-        file_pub    = filenames["public"].format(tempfile)
+        file_key    = self.filenames["private"].format(self.tmpfile)
+        file_pub    = self.filenames["public"].format(self.tmpfile)
 
         # merge arguments and command
         # bits are ignored for ed25519 keys
-        cmd = [self.opts.get('bin_keygen')]
-        args = ["-t{0}".format(self.opts.get('key_type')),
-                "-b{0}".format(self.opts.get('key_bits')),
-                "-C{0}".format(self.opts.get('key_comment')),
+        cmd = [self.opts.get('sshkey_bin_keygen')]
+        args = ["-t{0}".format(self.opts.get('sshkey_type')),
+                "-b{0}".format(self.opts.get('sshkey_bits')),
+                "-C{0}".format(self.opts.get('sshkey_comment')),
                 "-f{0}".format(file_key),
-                "-N{0}".format(password)]
+                "-N{0}".format(self.passphrase)]
         cmd += args
 
         # run subprocess
@@ -146,8 +159,8 @@ class GenerateSSHKey:
 
         # read file contents
         result = {}
-        result['private']   = self.opts.get_file_contents(file_key)
-        result['public']    = self.opts.get_file_contents(file_pub)
+        result['private']   = hlp.get_file_contents(file_key)
+        result['public']    = hlp.get_file_contents(file_pub)
 
         # generate fingerprints / bubble babble
         result = self.opts.merge(result, self.gen_fingerprints("md5", file_pub))
@@ -158,20 +171,31 @@ class GenerateSSHKey:
         return result
 
     # generate pkcs8 keyfiles
-    def gen_pkcs8(self, username, password, tempfile, filenames):
+    def gen_pkcs8(self):
         
         # set filenames
-        file_key    = filenames["private"].format(tempfile)
-        file_pub    = filenames["public"].format(tempfile)
-        file_pkcs8  = filenames["private_pkcs8"].format(tempfile)
+        file_key    = self.filenames["private"].format(self.tmpfile)
+        file_pub    = self.filenames["public"].format(self.tmpfile)
+        file_pkcs8  = self.filenames["private_pkcs8"].format(self.tmpfile)
+
+        # create password file
+        # BEWARE: when supplying the SAME password file for both a -passin file:filename and -passout file:filename parameter,
+        # openssl will use the first line as the passin password and the second line as the passout parameter
+        # if the password file does not contain a second line, openssl will fail with the following message:
+        #  Error reading password from BIO
+        #  Error getting passwords
+        # to avoid this, we write the same password to the password file twice. Since we're only using openssl to convert a
+        # single key into multiple formats, this does not pose a security risk
+        # to avoid confusing and prevent potential error with other processes requiring the password file, we generate a seperate one
+        file_pwd    = hlp.create_pwd_file(self.opts.get_tmp_filename(), "{}\n{}".format(self.passphrase, self.passphrase))
 
         # merge arguments and command
-        cmd = [self.opts.get('bin_openssl')]
+        cmd = [self.opts.get('sshkey_bin_openssl')]
         args = ["pkcs8", "-topk8", "-v2", "des3",
                 "-in", "{}".format(file_key),
-                "-passin", "pass:{}".format(password),
+                "-passin", "file:{}".format(file_pwd),
                 "-out", "{}".format(file_pkcs8),
-                "-passout", "pass:{}".format(password)]
+                "-passout", "file:{}".format(file_pwd)]
         cmd += args
 
         # run subprocess
@@ -179,10 +203,10 @@ class GenerateSSHKey:
 
         # read file contents
         result = {}
-        result['private_pkcs8'] = self.opts.get_file_contents(file_pkcs8)
+        result['private_pkcs8'] = hlp.get_file_contents(file_pkcs8)
 
         # generate public key
-        cmd = [self.opts.get('bin_keygen'),
+        cmd = [self.opts.get('sshkey_bin_keygen'),
                "-e", "-mPKCS8", "-f{}".format(file_pub)]
         proc    = Process("ssh-keygen", cmd).run()
         stdout  = proc.getstdout()
@@ -192,103 +216,92 @@ class GenerateSSHKey:
         return result
 
     # generate openssh keyfiles
-    def gen_openssh(self, username, password, tempfile, filenames):
+    def gen_openssh(self):
         
         # set filenames
-        file_key        = filenames["private"].format(tempfile)
+        file_key        = self.filenames["private"].format(self.tmpfile)
 
         # merge arguments and command
-        cmd = [self.opts.get('bin_keygen'),
+        cmd = [self.opts.get('sshkey_bin_keygen'),
                "-f{}".format(file_key),
-               "-p", "-P{}".format(password),
-               "-N{}".format(password),
+               "-p", "-P{}".format(self.passphrase),
+               "-N{}".format(self.passphrase),
                "-o",
                "-a", "100"]
         proc    = Process("ssh-keygen", cmd).run()
 
         # set result
         result = {}
-        result['private_openssh'] = self.opts.get_file_contents(file_key)
+        result['private_openssh'] = hlp.get_file_contents(file_key)
 
         # return result
         return result
 
     # generate putty keyfiles
-    def gen_putty(self, username, password, tempfile, filenames):
-
-        # set pwd file
-        pwdfile         = self.putty_create_pwd_file(password)
+    def gen_putty(self):
 
         # set filenames
-        file_key        = filenames["private"].format(tempfile)
-        file_putty      = filenames["private_putty"].format(tempfile)
+        file_key        = self.filenames["private"].format(self.tmpfile)
+        file_putty      = self.filenames["private_putty"].format(self.tmpfile)
 
         # merge arguments and command
-        cmd = [self.opts.get('bin_puttygen'),
+        cmd = [self.opts.get('sshkey_bin_puttygen'),
                "{}".format(file_key),
                "-O", "private",
-               "--old-passphrase", "{}".format(pwdfile),
-               "--new-passphrase", "{}".format(pwdfile),
+               "--old-passphrase", "{}".format(self.pwdfile),
+               "--new-passphrase", "{}".format(self.pwdfile),
                "-o", "{}".format(file_putty),
-               "-C", "{}".format(username)]
+               "-C", "{}".format(self.opts.get('sshkey_comment'))]
         proc = Process("puttygen", cmd).run()
 
         # set result
         result = {}
-        result['private_putty'] = self.opts.get_file_contents(file_putty)
+        result['private_putty'] = hlp.get_file_contents(file_putty)
 
         # generate putty fingerprint
-        cmd = [self.opts.get('bin_puttygen'),
+        cmd = [self.opts.get('sshkey_bin_puttygen'),
                "{}".format(file_putty),
                "-O", "fingerprint"]
         proc = Process("puttygen", cmd).run()
         stdout  = proc.getstdout()
         result['fingerprint_putty'] = "\n".join(stdout)
 
-        # destroy pwd file
-        self.putty_destroy_pwd_file(pwdfile)
-
         # return result
         return result
 
     # generate sshcom keyfiles
-    def gen_sshcom(self, username, password, tempfile, filenames):
-
-        # set pwd file
-        pwdfile = self.putty_create_pwd_file(password)
+    def gen_sshcom(self):
 
         # set filenames
-        file_key        = filenames["private"].format(tempfile)
-        file_sshcom     = filenames["private_sshcom"].format(tempfile)
+        file_key        = self.filenames["private"].format(self.tmpfile)
+        file_sshcom     = self.filenames["private_sshcom"].format(self.tmpfile)
 
         # merge arguments and command
-        cmd = [self.opts.get('bin_puttygen'),
+        cmd = [self.opts.get('sshkey_bin_puttygen'),
                "{}".format(file_key),
                "-O", "private-sshcom",
-               "--old-passphrase", "{}".format(pwdfile),
-               "--new-passphrase", "{}".format(pwdfile),
+               "--old-passphrase", "{}".format(self.pwdfile),
+               "--new-passphrase", "{}".format(self.pwdfile),
                "-o", "{}".format(file_sshcom),
-               "-C", "{}".format(username)]
+               "-C", "{}".format(self.opts.get('sshkey_comment'))]
         proc = Process("puttygen", cmd).run()
 
         # set result
         result = {}
-        result['private_sshcom'] = self.opts.get_file_contents(file_sshcom)
-
-        # destroy pwd file
-        self.putty_destroy_pwd_file(pwdfile)
+        result['private_sshcom'] = hlp.get_file_contents(file_sshcom)
 
         # return result
         return result
 
     # generate rfc4716 keyfiles
-    def gen_rfc4716(self, username, password, tempfile, filenames):
+    def gen_rfc4716(self):
         
         # set filenames
-        file_pub = filenames["public"].format(tempfile)
+        file_pub = self.filenames["public"].format(self.tmpfile)
 
         # merge arguments and command
-        cmd = [self.opts.get('bin_keygen'),
+        # setting a custom comment for this keytype is not supported
+        cmd = [self.opts.get('sshkey_bin_keygen'),
                "-e", "-m", "RFC4716",
                "-f{}".format(file_pub)]
         proc    = Process("ssh-keygen", cmd).run()
@@ -302,13 +315,13 @@ class GenerateSSHKey:
         return result
 
     # generate pem keyfiles
-    def gen_pem(self, username, password, tempfile, filenames):
+    def gen_pem(self):
         
         # set filenames
-        file_pub = filenames["public"].format(tempfile)
+        file_pub = self.filenames["public"].format(self.tmpfile)
 
         # merge arguments and command
-        cmd = [self.opts.get('bin_keygen'),
+        cmd = [self.opts.get('sshkey_bin_keygen'),
                "-e", "-m", "PEM",
                "-f{}".format(file_pub)]
         proc    = Process("ssh-keygen", cmd).run()
@@ -325,7 +338,7 @@ class GenerateSSHKey:
     def gen_fingerprints(self, fptype, pubfile):
 
         # generate fingerprints - output sent to stdout
-        cmd = [self.opts.get('bin_keygen'),   # full path to binary
+        cmd = [self.opts.get('sshkey_bin_keygen'),  # full path to binary
                "-l",                        # list fingerprint
                "-v",                        # list visual fingerprint
                "-E{}".format(fptype),       # fingerprint hash algorithm
@@ -339,7 +352,7 @@ class GenerateSSHKey:
         # set results
         result = {}
         result['fingerprint_{}'.format(fptype)] = fpline
-        result['fingerprint_{}_clean'.format(fptype)] = self.opts.extract_fingerprint(fpline)
+        result['fingerprint_{}_clean'.format(fptype)] = hlp.extract_fingerprint(fpline)
         result['fingerprint_{}_art'.format(fptype)] = "\n".join(stdout)
 
         # return
@@ -349,7 +362,7 @@ class GenerateSSHKey:
     def gen_bubblebabble(self, pubfile):
 
         # generate fingerprints - output sent to stdout
-        cmd = [self.opts.get('bin_keygen'),   # full path to binary
+        cmd = [self.opts.get('sshkey_bin_keygen'),   # full path to binary
                "-B",                        # list bubble babble fingerprint
                "-f{}".format(pubfile)]      # full path to public key
 
@@ -361,48 +374,41 @@ class GenerateSSHKey:
         # set results
         result = {}
         result['fingerprint_bubblebabble'] = bbline
-        result['fingerprint_bubblebabble_clean'] = self.opts.extract_bubblebabble(bbline)
+        result['fingerprint_bubblebabble_clean'] = hlp.extract_bubblebabble(bbline)
 
         # return
         return result
 
-    # function to get putty version
-    def putty_get_version(self):
 
-        # merge arguments and command
-        cmd = [self.opts.get('bin_puttygen'),"--version",]
-        proc = Process("puttygen", cmd).run()
+    # function to verify we have the right software versions
+    def check_versions(self):
 
-        # regex version from first line
-        stdout  = proc.getstdout()
-        version = re.match('^.+(\d\.\d+)', stdout[0])
-        display.vvv("puttygen version [{}]".format(version.group(1)))
-        return version.group(1)
+        # only check puttygen version if puttygen is enabled
+        if self.opts.get('sshkey_putty_enabled'):
 
-    # generate putty password file
-    def putty_create_pwd_file(self, password):
+            msg.vvv("checking puttygen version")
 
-        # create tmp file with password for putty
-        tmpfile = self.opts.get_tmp_filename()
-        file    = open(tmpfile, "w+")
-        file.write(password)
-        file.close()
+            # merge arguments and command
+            cmd = [self.opts.get('sshkey_bin_puttygen'),"--version",]
+            proc = Process("puttygen", cmd).run()
 
-        # return filepath
-        return tmpfile
+            # regex version from first line
+            stdout  = proc.getstdout()
+            regex_putty = r"^.+(\d\.\d+)"
+            match_putty = re.match(regex_putty, stdout[0])
 
-    # destroy putty password file
-    def putty_destroy_pwd_file(self, pwdfile):
+            # sanity check
+            if re.compile(regex_putty).groups < 1:
+                msg.fail("could not find a valid puttygen version number in string [{}]".format(stdout[0]))
 
-        # destroy
-        if os.path.isfile(pwdfile):
-                os.remove(pwdfile)
+            # check versions
+            versions        =  {'puttygen' : match_putty.group(1)}
+            req_puttygen    = '0.72'
 
-    # function to cleanup
-    def cleanup(self, tempfile, filename, sshkeys, filenames):
+            # sanity check
+            if version.parse(versions['puttygen']) < version.parse(req_puttygen):
+                msg.fail("puttygen version [{}] is required; [{}] given".format(req_puttygen, versions['puttygen']))
+            else:
+                msg.vvv("puttygen version [{}] detected".format(versions['puttygen']))
 
-        # delete tmp files
-        self.opts.delete_tmp_files(tempfile, filenames)
-
-        # remove tmpdir
-        self.opts.delete_tmp_dir(os.path.dirname(tempfile))
+        return True

@@ -36,7 +36,7 @@ class Process(object):
 
         # check for which process the arguments need to be cleaned
         if self.proc == "ssh-keygen":
-            sensitive = ["-f", "-N", "-P"]
+            sensitive = []#["-f", "-N", "-P"]
         if self.proc == "openssl":
             sensitive = ["pass:", "-passin", "-passout"]
         if self.proc == "puttygen":
