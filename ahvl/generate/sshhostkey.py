@@ -45,6 +45,8 @@ class GenerateSSHHostKey:
             "dns_sha1_clean"            : "{}.pub.sshfp.sha1.clean",
             "dns_sha256"                : "{}.pub.sshfp.sha256",
             "dns_sha256_clean"          : "{}.pub.sshfp.sha256.clean",
+            #"known_hosts_plain"         : "{}.knownhosts.plain",
+            #"known_hosts_hashed"        : "{}.knownhosts.hashed",
         }
 
 
@@ -96,7 +98,7 @@ class GenerateSSHHostKey:
             b = sw_ed25519.get(s)
 
         # merge arguments and command
-        cmd = "{} -b {} -t {} -o -a 100 -f {} -N '' -C '{}'".format(o['sshhostkey_bin_keygen'], b, t, file_key, o['sshhostkey_comment'])
+        cmd = "{} -b {} -t {} -f {} -N '' -C '{}'".format(o['sshhostkey_bin_keygen'], b, t, file_key, o['sshhostkey_comment'])
         proc = Process("ssh-keygen", cmd, shell=True).run()
 
         # set result keys
@@ -183,6 +185,30 @@ class GenerateSSHHostKey:
             # set dns records
             result[dnsname]  = " ".join(items)
             result[dnsclean] = " ".join(clean)
+
+        # return
+        return result
+
+    # generate knownhosts
+    def gen_knownhosts(self, hashed, pubfile):
+
+        # generate knownhosts signatures - output sent to stdout
+        cmd = [self.opts.get('sshhostkey_bin_keyscan'),   # full path to binary
+               "-l",                        # list fingerprint
+               "-v",                        # list visual fingerprint
+               "-E{}".format(fptype),       # fingerprint hash algorithm
+               "-f{}".format(pubfile)]      # full path to public key
+
+        # run process and catch stdout
+        proc    = Process("ssh-keygen", cmd).run()
+        stdout  = proc.getstdout()
+        fpline  = stdout.pop(0)
+
+        # set results
+        result = {}
+        result['fingerprint_{}'.format(fptype)] = fpline
+        result['fingerprint_{}_clean'.format(fptype)] = hlp.extract_fingerprint(fpline)
+        result['fingerprint_{}_art'.format(fptype)] = "\n".join(stdout)
 
         # return
         return result

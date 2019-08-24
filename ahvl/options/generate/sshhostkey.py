@@ -41,6 +41,7 @@ class OptionsGenerateSSHHostKey(OptionsBase):
             'sshhostkey_strength'   : "strong",                         # hostkey strength; see gen_sshhostkey function for actual values
             'sshhostkey_comment'    : None,                             # sshhostkey comment
             'sshhostkey_bin_keygen' : None,                             # full path to ssh-keygen binary
+            'sshhostkey_bin_keyscan': None,                             # full path to ssh-keyscan binary
         }
 
 
@@ -55,6 +56,7 @@ class OptionsGenerateSSHHostKey(OptionsBase):
         sshhostkey_type         = o['sshhostkey_type']
         sshhostkey_comment      = o['sshhostkey_comment']
         sshhostkey_bin_keygen   = o['sshhostkey_bin_keygen']
+        sshhostkey_bin_keyscan  = o['sshhostkey_bin_keyscan']
 
         # set find/sshhostkey_type
         if hlp.isempty(find):
@@ -70,12 +72,17 @@ class OptionsGenerateSSHHostKey(OptionsBase):
         if hlp.isempty(sshhostkey_bin_keygen):
             sshhostkey_bin_keygen  = hlp.find_binary('ssh-keygen')
 
+        # determine binary
+        if hlp.isempty(sshhostkey_bin_keyscan):
+            sshhostkey_bin_keyscan = hlp.find_binary('ssh-keyscan')
+
         # return list of overide options or calculated options
         return {
             'find'                  : find,
             'sshhostkey_type'       : sshhostkey_type,
             'sshhostkey_comment'    : sshhostkey_comment,
             'sshhostkey_bin_keygen' : sshhostkey_bin_keygen,
+            'sshhostkey_bin_keyscan': sshhostkey_bin_keyscan,
         }
 
 
@@ -87,6 +94,7 @@ class OptionsGenerateSSHHostKey(OptionsBase):
                 'sshhostkey_strength',
                 'sshhostkey_comment',
                 'sshhostkey_bin_keygen',
+                'sshhostkey_bin_keyscan',
                ]
 
 
