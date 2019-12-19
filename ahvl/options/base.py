@@ -65,6 +65,7 @@ class OptionsBase:
             'path'          : None,
             'autogenerate'  : True,
             'renew'         : False,
+            'pwd'           : None,
         }
 
         # get and merge default options

@@ -227,6 +227,24 @@ PASSLIB_MAX_PASSWORD_SIZE=16384 # to prevent error when using the hash function 
       msg: "{{ lookup('ahvl_password', find='mariadb', in='anotheruser', out='mysql41', pwd_length=8, pwd_type='phrase') }}"
 ```
 
+Additionally, passwords can be set with a value from your playbook. This can be useful to store secrets which you receive from an API or similar. For example, when creating IAM users on Amazon AWS, you could use the following example to store the returned access key in Vault:
+
+```
+---
+# playbook to demonstrate ahvl_set_password
+
+- hosts: localhost
+  gather_facts: no
+
+  tasks:
+
+  # the path in vault which will be set is [hosts/localhost/awstestusr] on the default mountpoint
+  - name: 'ahvl_set_password : set password for aws user, created via ansible'
+    debug:
+      msg: "{{ lookup('ahvl_set_password', find='awstestusr', in='myawsuser', pwd='mypasswd') }}"
+```
+
+
 #### SSH keys
 
 ```yaml
@@ -543,6 +561,7 @@ These options apply to all lookup plugins and can (or sometimes must) be set for
 | path                         | no       | string     | `{find}` / `{hostname}`           | depends on lookup plugin   | The actual search path used to find secret in vault. If not specified, it will be determined by the lookup plugin. When setting the path directly, you can use the variables {find} and {hostname} which will be replaced by the correct values prior to querying vault. |
 | autogenerate                 | no       | boolean    | `True` / `False`                  | `True`                       | Whether or not to automatically generate new secrets when they could not be found in vault or when the latest version of the secret has been deleted |
 | renew                        | no       | boolean    | `True` / `False`                  | `False`                      | Forces renewal of the secret, regardless of whether it already exists or not; will not change the behaviour of the autogenerate option. Be careful when using this, as it will be triggered for each and every lookup where this option is True, particularly in loops! |
+| pwd                          | no       | string     | `any string`                      | `None`                       | Required only when using the set_password function |
 
 
 #### ahvl Lookup Password options
@@ -556,6 +575,16 @@ These options apply to all lookup plugins and can (or sometimes must) be set for
 ###### Lookup options
 
 No additional options available, however, check the [ahvl Generate Password options](#ahvl-generate-password-options) section as well!
+
+
+#### ahvl Set Password options
+
+###### General options
+
+| Option name | Default value | Available options |
+|-------------|---------------|-------------------|
+| path | `hosts/{hostname}/{find}` | |
+| pwd | `None` | |
 
 
 #### ahvl Lookup SSH Key options

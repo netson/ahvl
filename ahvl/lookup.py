@@ -10,6 +10,7 @@ from ahvl.options.lookup.sshhostkey import OptionsLookupSSHHostKey
 from ahvl.options.lookup.gpgkey import OptionsLookupGPGKey
 from ahvl.options.lookup.credential import OptionsLookupCredential
 from ahvl.options.hashivault import OptionsHashiVault
+from ahvl.options.set.password import OptionsSetPassword
 
 from ahvl.generate.salt import GenerateSalt
 from ahvl.generate.password import GeneratePassword
@@ -67,6 +68,7 @@ class AhvlLookup(LookupBase):
                     "OptionsLookupSSHHostKey",
                     "OptionsLookupGPGKey",
                     "OptionsLookupCredential",
+                    "OptionsSetPassword"
                     ]
 
         # sanity checkjohndoe34
@@ -405,7 +407,7 @@ class AhvlLookup(LookupBase):
 
 
     #
-    # find password
+    # find credential
     #
     def find_credential(self, options):
 
@@ -420,3 +422,29 @@ class AhvlLookup(LookupBase):
             msg.fail("the requested credential [{}] could not be found at [{}]; auto generating credentials is not possible.".format(options.get('in'), options.get('path')))
 
         return secret
+
+
+    #
+    # set password
+    #
+    def set_password(self, options):
+
+        msg.vv("setting password [{}];".format(options.get('in')))
+
+        # save provided password
+        if options.get('pwd') is not None and options.get('pwd') != "":
+            
+            # attempt to fetch the password first so the key exists in vault
+            self.vault.get(options.get('path'), options.get('in'))
+
+            # then set the password
+            self.vault.set(
+                path=options.get('path'),
+                key=options.get('in'),
+                secret=options.get('pwd'),
+            )
+
+        else:
+            msg.fail("setting password [{}] failed; provided password is empty".format(options.get('pwd')))
+
+        return [True]
