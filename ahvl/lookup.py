@@ -167,19 +167,19 @@ class AhvlLookup(LookupBase):
 
     def return_pbkdf2sha256(self, secret, options):
         from passlib.hash import pbkdf2_sha256
-        return pbkdf2_sha256.hash(secret, salt=bytes(self.find_salt(options)))
+        return pbkdf2_sha256.hash(secret, salt=bytes(self.find_salt(options), encoding='utf8'))
 
     def return_pbkdf2sha512(self, secret, options):
         from passlib.hash import pbkdf2_sha512
-        return pbkdf2_sha512.hash(secret, salt=bytes(self.find_salt(options)), rounds=58000)
+        return pbkdf2_sha512.hash(secret, salt=bytes(self.find_salt(options), encoding='utf8'), rounds=58000)
 
     def return_argon2(self, secret, options):
         from passlib.hash import argon2
-        return argon2.using(salt=bytes(self.find_salt(options)), rounds=32).hash(secret)
+        return argon2.using(salt=bytes(self.find_salt(options), encoding='utf8'), rounds=32).hash(secret)
 
     def return_grubpbkdf2sha512(self, secret, options):
         from passlib.hash import grub_pbkdf2_sha512
-        return grub_pbkdf2_sha512.hash(secret, salt=bytes(self.find_salt(options)), rounds=38000)
+        return grub_pbkdf2_sha512.hash(secret, salt=bytes(self.find_salt(options), encoding='utf8'), rounds=38000)
 
     #
     # find salt
