@@ -18,6 +18,9 @@ from ahvl.generate.sshkey import GenerateSSHKey
 from ahvl.generate.sshhostkey import GenerateSSHHostKey
 from ahvl.generate.gpgkey import GenerateGPGKey
 
+# to be able to check the python version/distinguish between p2/p3 bytes() function
+import sys
+
 #
 # message
 #
@@ -167,19 +170,31 @@ class AhvlLookup(LookupBase):
 
     def return_pbkdf2sha256(self, secret, options):
         from passlib.hash import pbkdf2_sha256
-        return pbkdf2_sha256.hash(secret, salt=bytes(self.find_salt(options)))
+        if sys.version_info.major == 2:
+            return pbkdf2_sha256.hash(secret, salt=bytes(self.find_salt(options)))
+        else:
+            return pbkdf2_sha256.hash(secret, salt=bytes(self.find_salt(options), encoding='utf8'))
 
     def return_pbkdf2sha512(self, secret, options):
         from passlib.hash import pbkdf2_sha512
-        return pbkdf2_sha512.hash(secret, salt=bytes(self.find_salt(options)), rounds=58000)
+        if sys.version_info.major == 2:
+            return pbkdf2_sha512.hash(secret, salt=bytes(self.find_salt(options)), rounds=58000)
+        else:
+            return pbkdf2_sha512.hash(secret, salt=bytes(self.find_salt(options), encoding='utf8'), rounds=58000)
 
     def return_argon2(self, secret, options):
         from passlib.hash import argon2
-        return argon2.using(salt=bytes(self.find_salt(options)), rounds=32).hash(secret)
+        if sys.version_info.major == 2:
+            return argon2.using(salt=bytes(self.find_salt(options)), rounds=32).hash(secret)
+        else:
+            return argon2.using(salt=bytes(self.find_salt(options), encoding='utf8'), rounds=32).hash(secret)
 
     def return_grubpbkdf2sha512(self, secret, options):
         from passlib.hash import grub_pbkdf2_sha512
-        return grub_pbkdf2_sha512.hash(secret, salt=bytes(self.find_salt(options)), rounds=38000)
+        if sys.version_info.major == 2:
+            return grub_pbkdf2_sha512.hash(secret, salt=bytes(self.find_salt(options)), rounds=38000)
+        else:
+            return grub_pbkdf2_sha512.hash(secret, salt=bytes(self.find_salt(options), encoding='utf8'), rounds=38000)
 
     #
     # find salt
