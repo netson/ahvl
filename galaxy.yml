@@ -1,0 +1,29 @@
+---
+namespace: netson
+name: ahvl
+version: 1.2.1
+readme: README.md
+authors:
+- RH Sonnenberg
+description: A set of lookup plugins which retrieves secrets from HashiCorp Vault, and generates them automatically if they don't exist.
+license:
+- MIT
+license_file: "LICENSE"
+tags:
+- hashicorp
+- vault
+- collection
+- password
+- credential
+- gpgkey
+- sshkey
+- lookup
+- generate
+repository: https://github.com/netson/ahvl.git
+documentation: https://github.com/netson/ahvl/blob/master/README.md
+homepage: https://github.com/netson/ahvl
+issues: https://github.com/netson/ahvl/issues
+
+build_ignore:
+  - "setup.cfg"
+  - "setup.py"
