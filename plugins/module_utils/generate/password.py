@@ -1,8 +1,8 @@
 #
 # import modules
 #
-from ahvl.options.generate.password import OptionsGeneratePassword
-from ahvl.helper import AhvlMsg, AhvlHelper
+from ansible_collections.netson.ahvl.plugins.module_utils.options.generate.password import OptionsGeneratePassword
+from ansible_collections.netson.ahvl.plugins.module_utils.helper import AhvlMsg, AhvlHelper
 from passlib import pwd
 
 #

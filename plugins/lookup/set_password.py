@@ -9,7 +9,7 @@ ANSIBLE_METADATA = {
 }
 
 DOCUMENTATION = """
-    lookup: hvl_set_password
+    lookup: set_password
     version_added: "1.0"
     author:
       - Rinck H. Sonnenberg <r.sonnenberg@netson.nl>
@@ -168,7 +168,7 @@ EXAMPLES = """
   gather_facts: no
 
   vars:
-    ahvl_set_password:
+    set_password:
       basepath: "hosts/{}".format(self.hostname)                # basepath
       path: None                                                # path to find secret
       fullpath: None                                            # path to find secret; set in validate()
@@ -233,8 +233,8 @@ RETURN = """
 #
 # ansible modules are loaded in the AhvlLookup module
 #
-from ahvl.lookup import AhvlLookup
-from ahvl.helper import AhvlMsg, AhvlHelper
+from ansible_collections.netson.ahvl.plugins.module_utils.lookup import AhvlLookup
+from ansible_collections.netson.ahvl.plugins.module_utils.helper import AhvlMsg, AhvlHelper
 
 #
 # message/helper

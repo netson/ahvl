@@ -1,8 +1,8 @@
 #
 # import modules
 #
-from ahvl.options.base import OptionsBase
-from ahvl.helper import AhvlMsg, AhvlHelper
+from ansible_collections.netson.ahvl.plugins.module_utils.options.base import OptionsBase
+from ansible_collections.netson.ahvl.plugins.module_utils.helper import AhvlMsg, AhvlHelper
 import os
 
 #
@@ -20,7 +20,7 @@ class OptionsLookupCredential(OptionsBase):
     def get_prefix(self):
 
         # return option prefix
-        return "ahvl_credential"
+        return "credential"
 
 
     # set path

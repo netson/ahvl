@@ -9,7 +9,7 @@ ANSIBLE_METADATA = {
 }
 
 DOCUMENTATION = """
-    lookup: hvl_gpgkey
+    lookup: ahvl_gpgkey
     version_added: "1.0"
     author:
       - Rinck H. Sonnenberg <r.sonnenberg@netson.nl>
@@ -233,8 +233,8 @@ RETURN = """
 #
 # ansible modules are loaded in the AhvlLookup module
 #
-from ahvl.lookup import AhvlLookup
-from ahvl.helper import AhvlMsg, AhvlHelper
+from ansible_collections.netson.ahvl.plugins.module_utils.lookup import AhvlLookup
+from ansible_collections.netson.ahvl.plugins.module_utils.helper import AhvlMsg, AhvlHelper
 
 #
 # message/helper

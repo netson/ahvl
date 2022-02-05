@@ -1,8 +1,8 @@
 #
 # import modules
 #
-from ahvl.options.generate.salt import OptionsGenerateSalt
-from ahvl.helper import AhvlMsg, AhvlHelper
+from ansible_collections.netson.ahvl.plugins.module_utils.options.generate.salt import OptionsGenerateSalt
+from ansible_collections.netson.ahvl.plugins.module_utils.helper import AhvlMsg, AhvlHelper
 import random
 
 #

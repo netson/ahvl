@@ -1,9 +1,9 @@
 #
 # import modules
 #
-from ahvl.options.generate.gpgkey import OptionsGenerateGPGKey
-from ahvl.helper import AhvlMsg, AhvlHelper
-from ahvl.process import Process
+from ansible_collections.netson.ahvl.plugins.module_utils.options.generate.gpgkey import OptionsGenerateGPGKey
+from ansible_collections.netson.ahvl.plugins.module_utils.helper import AhvlMsg, AhvlHelper
+from ansible_collections.netson.ahvl.plugins.module_utils.process import Process
 from packaging import version
 import re
 

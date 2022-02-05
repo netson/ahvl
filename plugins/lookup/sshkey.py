@@ -215,12 +215,12 @@ EXAMPLES = """
       - postgresmd5
       - onetime
 
-  # show all different hvl lookups
+  # show all different ahvl lookups
   tasks:
 
-  - name: 'hvl_sshkey : test lookup'
+  - name: 'ahvl_sshkey : test lookup'
     debug:
-      msg: "{{ lookup('hvl_sshkey', path='mysql', key='myusr1', ret=item) }}"
+      msg: "{{ lookup('ahvl_sshkey', path='mysql', key='myusr1', ret=item) }}"
     loop: "{{ password_outs }}"
 """
 
@@ -233,8 +233,8 @@ RETURN = """
 #
 # ansible modules are loaded in the AhvlLookup module
 #
-from ahvl.lookup import AhvlLookup
-from ahvl.helper import AhvlMsg, AhvlHelper
+from ansible_collections.netson.ahvl.plugins.module_utils.lookup import AhvlLookup
+from ansible_collections.netson.ahvl.plugins.module_utils.helper import AhvlMsg, AhvlHelper
 
 #
 # message/helper

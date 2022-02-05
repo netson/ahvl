@@ -1,7 +1,7 @@
 #
 # import modules
 #
-from ahvl.helper import AhvlMsg, AhvlHelper
+from ansible_collections.netson.ahvl.plugins.module_utils.helper import AhvlMsg, AhvlHelper
 import subprocess
 
 #
@@ -73,8 +73,8 @@ class Process(object):
     def __set_result(self):
         
         # convert stdout and stderr to individual lines
-        self.stdoutlines    = self.stdout.rstrip('\n').split("\n")
-        self.stderrlines    = self.stderr.rstrip('\n').split("\n")
+        self.stdoutlines    = self.stdout.decode().rstrip('\n').split("\n")
+        self.stderrlines    = self.stderr.decode().rstrip('\n').split("\n")
 
     # set process to run; accepts known processes only
     def setprocess(self, proc):

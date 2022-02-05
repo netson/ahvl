@@ -2,21 +2,21 @@
 # import modules
 #
 from ansible.plugins.lookup import LookupBase
-from ahvl.helper import AhvlMsg, AhvlHelper
-from ahvl.hashivault import HashiVault
-from ahvl.options.lookup.password import OptionsLookupPassword
-from ahvl.options.lookup.sshkey import OptionsLookupSSHKey
-from ahvl.options.lookup.sshhostkey import OptionsLookupSSHHostKey
-from ahvl.options.lookup.gpgkey import OptionsLookupGPGKey
-from ahvl.options.lookup.credential import OptionsLookupCredential
-from ahvl.options.hashivault import OptionsHashiVault
-from ahvl.options.set.password import OptionsSetPassword
+from ansible_collections.netson.ahvl.plugins.module_utils.helper import AhvlMsg, AhvlHelper
+from ansible_collections.netson.ahvl.plugins.module_utils.hashivault import HashiVault
+from ansible_collections.netson.ahvl.plugins.module_utils.options.lookup.password import OptionsLookupPassword
+from ansible_collections.netson.ahvl.plugins.module_utils.options.lookup.sshkey import OptionsLookupSSHKey
+from ansible_collections.netson.ahvl.plugins.module_utils.options.lookup.sshhostkey import OptionsLookupSSHHostKey
+from ansible_collections.netson.ahvl.plugins.module_utils.options.lookup.gpgkey import OptionsLookupGPGKey
+from ansible_collections.netson.ahvl.plugins.module_utils.options.lookup.credential import OptionsLookupCredential
+from ansible_collections.netson.ahvl.plugins.module_utils.options.hashivault import OptionsHashiVault
+from ansible_collections.netson.ahvl.plugins.module_utils.options.set.password import OptionsSetPassword
 
-from ahvl.generate.salt import GenerateSalt
-from ahvl.generate.password import GeneratePassword
-from ahvl.generate.sshkey import GenerateSSHKey
-from ahvl.generate.sshhostkey import GenerateSSHHostKey
-from ahvl.generate.gpgkey import GenerateGPGKey
+from ansible_collections.netson.ahvl.plugins.module_utils.generate.salt import GenerateSalt
+from ansible_collections.netson.ahvl.plugins.module_utils.generate.password import GeneratePassword
+from ansible_collections.netson.ahvl.plugins.module_utils.generate.sshkey import GenerateSSHKey
+from ansible_collections.netson.ahvl.plugins.module_utils.generate.sshhostkey import GenerateSSHHostKey
+from ansible_collections.netson.ahvl.plugins.module_utils.generate.gpgkey import GenerateGPGKey
 
 # to be able to check the python version/distinguish between p2/p3 bytes() function
 import sys

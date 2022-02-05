@@ -1,7 +1,7 @@
 #
 # import modules
 #
-from ahvl.options.base import OptionsBase
+from ansible_collections.netson.ahvl.plugins.module_utils.options.base import OptionsBase
 
 #
 # OptionsGenerateSalt
