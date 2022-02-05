@@ -9,7 +9,7 @@ ANSIBLE_METADATA = {
 }
 
 DOCUMENTATION = """
-    lookup: hvl_sshkey
+    lookup: netson.ahvl.sshkey
     version_added: "1.0"
     author:
       - Rinck H. Sonnenberg <r.sonnenberg@netson.nl>
@@ -168,7 +168,7 @@ EXAMPLES = """
   gather_facts: no
 
   vars:
-    ahvl_sshkey:
+    netson.ahvl.sshkey:
       basepath: "hosts/{}".format(self.hostname)                # basepath
       path: None                                                # path to find secret
       fullpath: None                                            # path to find secret; set in validate()
@@ -218,9 +218,9 @@ EXAMPLES = """
   # show all different ahvl lookups
   tasks:
 
-  - name: 'ahvl_sshkey : test lookup'
+  - name: 'netson.ahvl.sshkey : test lookup'
     debug:
-      msg: "{{ lookup('ahvl_sshkey', path='mysql', key='myusr1', ret=item) }}"
+      msg: "{{ lookup('netson.ahvl.sshkey', path='mysql', key='myusr1', ret=item) }}"
     loop: "{{ password_outs }}"
 """
 

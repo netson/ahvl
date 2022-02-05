@@ -9,7 +9,7 @@ ANSIBLE_METADATA = {
 }
 
 DOCUMENTATION = """
-    lookup: ahvl_gpgkey
+    lookup: gpgkey
     version_added: "1.0"
     author:
       - Rinck H. Sonnenberg <r.sonnenberg@netson.nl>
@@ -168,7 +168,7 @@ EXAMPLES = """
   gather_facts: no
 
   vars:
-    ahvl_sshkey:
+    netson.ahvl.sshkey:
       basepath: "hosts/{}".format(self.hostname)                # basepath
       path: None                                                # path to find secret
       path: None                                            # path to find secret; set in validate()
@@ -215,12 +215,12 @@ EXAMPLES = """
       - postgresmd5
       - onetime
 
-  # show all different hvl lookups
+  # show all different ahvl lookups
   tasks:
 
-  - name: 'hvl_sshkey : test lookup'
+  - name: 'ahvl_sshkey : test lookup'
     debug:
-      msg: "{{ lookup('hvl_sshkey', path='mysql', key='myusr1', ret=item) }}"
+      msg: "{{ lookup('netson.ahvl.sshkey', path='mysql', key='myusr1', ret=item) }}"
     loop: "{{ password_outs }}"
 """
 

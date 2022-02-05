@@ -215,12 +215,12 @@ EXAMPLES = """
       - postgresmd5
       - onetime
 
-  # show all different hvl lookups
+  # show all different ahvl lookups
   tasks:
 
-  - name: 'hvl_password : test lookup'
+  - name: 'netson.ahvl.password : test lookup'
     debug:
-      msg: "{{ lookup('hvl_password', path='mysql', key='myusr1', ret=item) }}"
+      msg: "{{ lookup('netson.ahvl.password', path='mysql', key='myusr1', ret=item) }}"
     loop: "{{ password_outs }}"
 """
 

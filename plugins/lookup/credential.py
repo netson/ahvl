@@ -9,7 +9,7 @@ ANSIBLE_METADATA = {
 }
 
 DOCUMENTATION = """
-    lookup: ahvl_sshkey
+    lookup: netson.ahvl.sshkey
     version_added: "1.0"
     author:
       - Rinck H. Sonnenberg <r.sonnenberg@netson.nl>
@@ -220,7 +220,7 @@ EXAMPLES = """
 
   - name: 'ahvl_password : test lookup'
     debug:
-      msg: "{{ lookup('ahvl_password', path='mysql', key='myusr1', ret=item) }}"
+      msg: "{{ lookup('netson.ahvl.password', path='mysql', key='myusr1', ret=item) }}"
     loop: "{{ password_outs }}"
 """
 
