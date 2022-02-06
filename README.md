@@ -116,15 +116,15 @@ Additionally, the following python packages are required. These should be instal
 #### Install package
 
 ```bash
-pip install ahvl
+ansible-galaxy collection install git+https://github.com/netson/ahvl
 ```
 
-Package will most likely be installed in ```/usr/local/lib/pythonX.X/dist-packages/ahvl``` on ubuntu systems
+To customize where the collection is installed or to choose a specific version, please refer to: https://docs.ansible.com/ansible/latest/user_guide/collections_using.html#installing-collections-with-ansible-galaxy
 
 #### Upgrade package
 
 ```bash
-pip install --upgrade ahvl
+ansible-galaxy collection install git+https://github.com/netson/ahvl --upgrade
 ```
 
 
@@ -721,21 +721,16 @@ No additional options available.
 ## Update ahvl package instructions
 
 * create a working directory `mkdir /opt/ahvl && cd /opt/ahvl`
-* make sure twine is installed `pip install twine`
 * make sure your github SSH key is available
 * login to github `ssh -T git@github.com`
 * clone repository `git clone git://github.com/netson/ahvl`
-* set remote origin `git remote set-url origin git@github.com:netson/ahvl.git`
+* checkout new branch `git checkout -b my-branch-name`
 * make changes as needed
-* remove any dist folder that may exist `rm -rf ./dist && rm MANIFEST`
-* determine next PyPi package version number, look at `https://github.com/netson/ahvl/releases`
-* change the `version` and `download_url` in `setup.py`
+* determine next version number, look at `https://github.com/netson/ahvl/releases`
+* change the `version` in `galaxy.yml`
 * commit changes to git `git add . && git commit -m "commit message"`
-* push to master `git push origin master`
-* create a new release on github with the same version number as in `download_url`
-* create PyPi source distribution `python setup.py sdist`
-* test package upload using twine `twine upload --repository-url https://test.pypi.org/legacy/ dist/*`
-* verify test results on `https://test.pypi.org/manage/projects/`
-* upload package to PyPi using twine `twine upload dist/*`
-* enter your `username` and `password`
+* push to origin `git push -u origin my-branch-name`
+* create a new release on github with the same version number as in `galaxy.yml`
+* build the collection `ansible-galaxy collection build .`
+* publish the package on ansible galaxy `ansible-galaxy collection publish`
 * DONE! :-)
