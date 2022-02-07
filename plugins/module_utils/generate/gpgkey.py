@@ -221,7 +221,7 @@ class GenerateGPGKey:
             msg.fail("could not find a valid gpg version number in string [{}]".format(stdout[0]))
 
         # find libgcrypt version
-        regex_libgcrypt = r"libgcrypt\s+(\d+\.\d+\.?\d*)$"
+        regex_libgcrypt = r"libgcrypt\s+(\d+\.\d+\.?\d*)"
         match_libgcrypt = re.match(regex_libgcrypt, stdout[1])
 
         # sanity check
