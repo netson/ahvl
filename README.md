@@ -85,7 +85,7 @@ These lookup plugins depend on the following software packages:
 
 | Name            | Min. version | Comments |
 |-----------------|--------------|----------|
-| Ansible         | 2.7          | Doesn't really need an introduction here |
+| Ansible         | 2.8 (ideally 2.9+) | Collections are a tech preview in 2.8 but fully supported in 2.9+ |
 | HashiCorp Vault | 1.1.3        | Only KV storage engine version 2 is supported |
 | GnuPG           | 2.1.17       | To generate GPG Keys |
 | Libgcrypt       | 1.8.1        | Required by GnuPG |
