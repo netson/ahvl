@@ -3,6 +3,7 @@
 #
 from ansible_collections.netson.ahvl.plugins.module_utils.options.base import OptionsBase
 from ansible_collections.netson.ahvl.plugins.module_utils.helper import AhvlMsg, AhvlHelper
+import os
 
 #
 # helper/message
@@ -47,7 +48,7 @@ class OptionsHashiVault(OptionsBase):
             'ahvl_password'        : None,                       # vault login password
             'ahvl_role_id'         : None,                       # vault login role id
             'ahvl_secret_id'       : None,                       # vault login secret id
-            'ahvl_token'           : None,                       # vault token
+            'ahvl_token'           : open(os.environ['HOME'] + '/.vault-token').read().strip(),  # vault token
         }
 
 
