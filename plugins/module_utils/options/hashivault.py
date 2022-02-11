@@ -32,10 +32,13 @@ class OptionsHashiVault(OptionsBase):
         # return basepath
         return None
 
-
     # set default options
     def get_defaults(self):
-
+        # Look up token from vault token helper
+        try:
+            vtkn = open(os.environ['HOME'] + '/.vault-token').read().strip()
+        except OSError:
+            vtkn = None
         # set default option values - dict
         return {
             'ahvl_url'             : 'http://localhost:8200',    # hashi vault url i.e. https://fqdn:8200
@@ -48,7 +51,7 @@ class OptionsHashiVault(OptionsBase):
             'ahvl_password'        : None,                       # vault login password
             'ahvl_role_id'         : None,                       # vault login role id
             'ahvl_secret_id'       : None,                       # vault login secret id
-            'ahvl_token'           : open(os.environ['HOME'] + '/.vault-token').read().strip(),  # vault token
+            'ahvl_token'           : vtkn,                       # vault token
         }
 
 
