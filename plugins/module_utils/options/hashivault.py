@@ -40,7 +40,7 @@ class OptionsHashiVault(OptionsBase):
         # Look up token from vault token helper
         try:
             vtkn = open(os.environ['HOME'] + '/.vault-token').read().strip()
-        except OSError:
+        except (OSError, IOError):
             vtkn = None
         # set default option values - dict
         return {
