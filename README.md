@@ -1,3 +1,7 @@
+# DISCONTINUED
+
+I have decided to stop maintaining this package. It has been dormant for a long time now and I will most likely phase out Ansible in the near future. I still have a need for the functionality of this package, but am considering rewriting it in one form or another in Rust.
+
 # ahvl
 
 Base libraries for the Ansible HashiCorp Vault Lookup (AHVL) Plugin by Netson
